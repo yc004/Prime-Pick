@@ -1,0 +1,5 @@
+filename,technical_score,is_unusable,unusable_reasons,sharpness_score,is_blurry,exposure_score,exposure_flags,p1,p5,p50,p95,p99,white_ratio,black_ratio,dynamic_range,is_overexposed,is_underexposed,has_highlight_clipping,has_shadow_crushing
+blur.jpg,45.21,True,BLURRY,2.75,True,99.6,OK,113,117,127,137,141,0.0,0.0,20,False,False,False,False
+normal.jpg,40.94,True,BLURRY|OVEREXPOSED|UNDEREXPOSED,0.06,True,90.97,OVEREXPOSED|UNDEREXPOSED,2,12,127,242,252,0.0196,0.0235,230,True,True,False,False
+black.jpg,0.0,True,BLURRY|UNDEREXPOSED|SHADOW_CRUSH,0.0,True,0.0,SHADOW_CRUSH|UNDEREXPOSED,0,0,0,0,0,0.0,1.0,0,False,True,False,True
+white.jpg,0.0,True,BLURRY|OVEREXPOSED|HIGHLIGHT_CLIP,0.0,True,0.0,HIGHLIGHT_CLIP|OVEREXPOSED,255,255,255,255,255,1.0,0.0,0,True,False,True,False
