@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Wedding High-Strict",
+    "config": {
+      "weights": { "sharpness": 2.0, "exposure": 1.0 },
+      "thresholds": { "sharpness": 80 }
+    }
+  },
+  {
+    "name": "Sports Action",
+    "config": {
+      "weights": { "sharpness": 3.0, "exposure": 0.5 },
+      "max_long_edge": 2048
+    }
+  }
+]
