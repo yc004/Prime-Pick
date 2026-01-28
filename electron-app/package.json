@@ -8,16 +8,48 @@
     "dev": "vite",
     "gen:icons": "node scripts/generate-icons.mjs",
     "build": "tsc && vite build",
+    "dist": "npm run build && electron-builder",
     "preview": "vite preview"
   },
   "build": {
     "appId": "com.primepick.app",
     "productName": "Prime Pick",
     "directories": {
-      "buildResources": "build"
+      "buildResources": "build",
+      "output": "release2"
     },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "public/**",
+      "node_modules/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/photo_selector_engine.exe",
+        "to": "engine/photo_selector_engine.exe"
+      }
+    ],
     "win": {
+      "target": "nsis",
       "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": true
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.png",
+      "extraResources": [
+        {
+          "from": "../dist/photo_selector_engine",
+          "to": "engine/photo_selector_engine"
+        }
+      ]
     }
   },
   "devDependencies": {

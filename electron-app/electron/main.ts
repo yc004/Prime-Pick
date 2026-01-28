@@ -135,19 +135,36 @@ function parseCsv(content: string): Array<Record<string, string>> {
 }
 
 function createWindow() {
+  const distDir = app.isPackaged ? path.join(app.getAppPath(), 'dist') : path.join(__dirname, '../dist')
+  const publicDir = app.isPackaged ? distDir : path.join(__dirname, '../public')
+
   win = new BrowserWindow({
     width: 1400,
     height: 900,
-    icon: path.join(process.env.VITE_PUBLIC, 'icon.png'),
+    icon: path.join(publicDir, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
     },
-    titleBarStyle: 'hidden', // Custom title bar
+    titleBarStyle: 'hidden',
     autoHideMenuBar: true,
-    backgroundColor: '#020617', // Match design system
+    backgroundColor: '#020617',
+  })
+
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    log.error('did-fail-load', { errorCode, errorDescription, validatedURL })
+    dialog.showErrorBox('页面加载失败', `${errorDescription} (${errorCode})\n${validatedURL}`)
+  })
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    log.error('render-process-gone', details)
+    dialog.showErrorBox('渲染进程崩溃', `${details.reason} (exitCode=${details.exitCode})`)
+  })
+
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (level >= 2) log.error('renderer-console', { level, message, line, sourceId })
   })
 
   // Window control IPCs
@@ -164,7 +181,7 @@ function createWindow() {
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
   } else {
-    win.loadFile(path.join(process.env.DIST, 'index.html'))
+    win.loadFile(path.join(distDir, 'index.html'))
   }
 }
 
@@ -305,6 +322,79 @@ app.whenReady().then(() => {
     setupIpc()
 })
 
+function getSpawnParameters(command: string, extraArgs: string[]) {
+    if (app.isPackaged) {
+        // Production: use bundled executable
+        // We assume the executable is in 'resources/engine' folder
+        // For Windows: photo_selector_engine.exe
+        // For Mac: photo_selector_engine
+        const exeName = process.platform === 'win32' ? 'photo_selector_engine.exe' : 'photo_selector_engine'
+        // Using process.resourcesPath to locate the engine
+        // In electron-builder, extraResources puts files in resources/
+        const executable = path.join(process.resourcesPath, 'engine', exeName)
+        
+        return {
+            cmd: executable,
+            args: [command, ...extraArgs],
+            cwd: path.dirname(executable),
+            env: { ...process.env } // inherit env but no special python setup
+        }
+    } else {
+        // Development: use python script
+        const projectRoot = path.resolve(__dirname, '../../') 
+        const scriptPath = path.join(projectRoot, 'photo_selector/cli.py')
+        
+        return {
+            cmd: 'python',
+            args: [scriptPath, command, ...extraArgs],
+            cwd: projectRoot,
+            env: { ...process.env, PYTHONPATH: projectRoot }
+        }
+    }
+}
+
+function spawnPythonProcess(event: Electron.IpcMainEvent, eventPrefix: string, spawnParams: { cmd: string, args: string[], cwd: string, env: any }) {
+    if (pythonProcess) {
+        pythonProcess.kill()
+    }
+
+    log.info(`Spawning: ${spawnParams.cmd} ${spawnParams.args.join(' ')}`)
+    
+    pythonProcess = spawn(spawnParams.cmd, spawnParams.args, {
+        cwd: spawnParams.cwd,
+        env: spawnParams.env
+    })
+
+    pythonProcess.stdout?.on('data', (data) => {
+        const lines = data.toString().split('\n')
+        for (const line of lines) {
+            if (!line.trim()) continue
+            try {
+                const json = JSON.parse(line)
+                event.reply(`${eventPrefix}-progress`, json)
+            } catch (e) {
+                log.info(`${eventPrefix} stdout:`, line)
+            }
+        }
+    })
+
+    pythonProcess.stderr?.on('data', (data) => {
+        const msg = data.toString()
+        log.error(`${eventPrefix} stderr: ${msg}`)
+        // Optional: filter out harmless stderr
+    })
+
+    pythonProcess.on('close', (code) => {
+        log.info(`${eventPrefix} finished with code:`, code)
+        event.reply(`${eventPrefix}-done`, code)
+        pythonProcess = null
+        if (code !== 0) {
+             // We can send a generic error if needed, but let the renderer handle non-zero codes via the done event if appropriate
+             // Or send explicit error
+        }
+    })
+}
+
 function setupIpc() {
     ipcMain.handle('select-directory', async () => {
         const result = await dialog.showOpenDialog(win!, {
@@ -354,25 +444,11 @@ function setupIpc() {
     })
 
     ipcMain.on('start-compute', (event, args) => {
-        if (pythonProcess) {
-            pythonProcess.kill()
-        }
-
         const { inputDir, profile, config, rebuildCache } = args
         const configPath = path.join(app.getPath('userData'), 'temp_config.json')
         fs.writeFileSync(configPath, JSON.stringify(config))
 
-        // Determine project root
-        // In dev: __dirname is electron-app/dist-electron
-        // We need: electron-app/../
-        const projectRoot = path.resolve(__dirname, '../../') 
-        const scriptPath = path.join(projectRoot, 'photo_selector/cli.py')
-        
-        log.info("Spawning python:", scriptPath, "in", projectRoot)
-
         const cliArgs = [
-            scriptPath,
-            'compute',
             '--input-dir', inputDir,
             '--profile', profile,
             '--config-json', configPath
@@ -380,47 +456,15 @@ function setupIpc() {
 
         if (rebuildCache) cliArgs.push('--rebuild-cache')
 
-        pythonProcess = spawn('python', cliArgs, {
-            cwd: projectRoot,
-            env: { ...process.env, PYTHONPATH: projectRoot }
-        })
-
-        pythonProcess.stdout?.on('data', (data) => {
-            const lines = data.toString().split('\n')
-            for (const line of lines) {
-                if (!line.trim()) continue
-                try {
-                    const json = JSON.parse(line)
-                    event.reply('compute-progress', json)
-                } catch (e) {
-                    log.info("Python stdout:", line)
-                }
-            }
-        })
-
-        pythonProcess.stderr?.on('data', (data) => {
-            log.error(`Python stderr: ${data}`)
-        })
-
-        pythonProcess.on('close', (code) => {
-            event.reply('compute-done', code)
-            pythonProcess = null
-        })
+        const params = getSpawnParameters('compute', cliArgs)
+        spawnPythonProcess(event, 'compute', params)
     })
 
     ipcMain.on('start-group', (event, args) => {
-        if (pythonProcess) {
-            pythonProcess.kill()
-        }
-
         const { inputDir, params } = args
-        const projectRoot = path.resolve(__dirname, '../../')
-        const scriptPath = path.join(projectRoot, 'photo_selector/cli.py')
 
         const p = params ?? {}
         const cliArgs = [
-            scriptPath,
-            'group',
             '--input-dir', inputDir,
             '--output-dir', inputDir,
             '--embed-model', String(p.embedModel ?? 'mobilenet_v3_small'),
@@ -432,39 +476,8 @@ function setupIpc() {
             '--workers', String(p.workers ?? 4),
             '--batch-size', String(p.batchSize ?? 32),
         ]
-
-        log.info("Starting group:", scriptPath, "in", projectRoot, cliArgs.join(' '))
-
-        pythonProcess = spawn('python', cliArgs, {
-            cwd: projectRoot,
-            env: { ...process.env, PYTHONPATH: projectRoot }
-        })
-
-        pythonProcess.stdout?.on('data', (data) => {
-            const lines = data.toString().split('\n')
-            for (const line of lines) {
-                if (!line.trim()) continue
-                try {
-                    const json = JSON.parse(line)
-                    event.reply('group-progress', json)
-                } catch (e) {
-                    log.info("group stdout:", line)
-                }
-            }
-        })
-
-        pythonProcess.stderr?.on('data', (data) => {
-            const msg = data.toString()
-            log.error(`group stderr: ${msg}`)
-        })
-
-        pythonProcess.on('close', (code) => {
-            event.reply('group-done', code)
-            pythonProcess = null
-            if (code !== 0) {
-                sendError("相似分组失败", `进程异常退出，退出码: ${code}`)
-            }
-        })
+        const spawnParams = getSpawnParameters('group', cliArgs)
+        spawnPythonProcess(event, 'group', spawnParams)
     })
 
     ipcMain.on('cancel-compute', () => {
@@ -489,53 +502,15 @@ function setupIpc() {
         const configPath = path.join(app.getPath('userData'), 'temp_config.json')
         fs.writeFileSync(configPath, JSON.stringify(config))
         
-        const projectRoot = path.resolve(__dirname, '../../')
-        const scriptPath = path.join(projectRoot, 'photo_selector/cli.py')
-        
         const cliArgs = [
-            scriptPath,
-            'write-xmp',
             '--input-dir', inputDir,
             '--selection-file', selectionPath,
             '--config-json', configPath
         ]
         if (onlySelected) cliArgs.push('--only-selected')
         
-        log.info("Starting write-xmp:", scriptPath)
-
-        const child = spawn('python', cliArgs, {
-            cwd: projectRoot,
-            env: { ...process.env, PYTHONPATH: projectRoot }
-        })
-        
-        child.stdout?.on('data', (data) => {
-             const lines = data.toString().split('\n')
-             for (const line of lines) {
-                 if(!line.trim()) continue
-                 try {
-                     const json = JSON.parse(line)
-                     event.reply('write-xmp-progress', json)
-                 } catch(e) {
-                     log.info("write-xmp stdout:", line)
-                 }
-             }
-        })
-
-        child.stderr?.on('data', (data) => {
-            const msg = data.toString()
-            log.error(`write-xmp stderr: ${msg}`)
-            if (msg.includes("Traceback") || msg.includes("Error:")) {
-                sendError("写入 XMP 错误", msg)
-            }
-        })
-        
-        child.on('close', (code) => {
-            log.info("write-xmp finished with code:", code)
-            event.reply('write-xmp-done', code)
-            if (code !== 0) {
-                sendError("写入 XMP 失败", `进程异常退出，退出码: ${code}`)
-            }
-        })
+        const params = getSpawnParameters('write-xmp', cliArgs)
+        spawnPythonProcess(event, 'write-xmp', params)
     })
 
     // Logging IPC

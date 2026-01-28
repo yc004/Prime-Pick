@@ -4,3 +4,6 @@ test_images
 .trae
 *.db
 _pycache_
+build
+electron-app
+engine_build_venv

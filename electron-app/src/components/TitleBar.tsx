@@ -1,6 +1,5 @@
 import React from 'react'
 import { MinusOutlined, BorderOutlined, CloseOutlined } from '@ant-design/icons'
-import Logo from './Logo'
 
 
 interface TitleBarProps {
@@ -36,13 +35,11 @@ const TitleBar: React.FC<TitleBarProps> = ({ title = "Prime Pick" }) => {
     <div className="h-10 shrink-0 flex items-center justify-between px-3 select-none text-slate-200 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 z-50"
          style={{ WebkitAppRegion: 'drag' } as any}>
       
-      {/* Title / Icon Area */}
       <div className="flex items-center gap-2 text-sm font-medium opacity-80">
-        <Logo className="w-5 h-5 object-contain" />
+        <img src="logo.svg" className="w-5 h-5 object-contain" draggable={false} />
         <span>{title}</span>
       </div>
 
-      {/* Window Controls */}
       <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as any}>
         <button 
           onClick={handleMinimize}

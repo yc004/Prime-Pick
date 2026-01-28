@@ -14,12 +14,26 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['tensorboard', 'matplotlib', 'scipy', 'pandas', 'tkinter'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
     noarchive=False,
 )
+
+# Filter out CUDA/NVIDIA binaries manually to reduce size
+# Since we only use CPU inference for MobileNetV3
+print("Filtering binaries...")
+cuda_keywords = ['cublas', 'cudart', 'cudnn', 'cufft', 'curand', 'cusolver', 'cusparse', 'nvrtc', 'nvToolsExt', 'caffe2_nv']
+new_binaries = []
+for (name, path, typecode) in a.binaries:
+    lower_name = name.lower()
+    if any(k in lower_name for k in cuda_keywords):
+        print(f"Removing CUDA binary: {name}")
+        continue
+    new_binaries.append((name, path, typecode))
+a.binaries = new_binaries
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(

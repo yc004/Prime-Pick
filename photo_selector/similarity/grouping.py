@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from dataclasses import asdict, dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -31,6 +32,8 @@ def _load_torch_model(embed_model: str):
 
     embed_model = (embed_model or "").strip().lower()
     if embed_model in ("mobilenetv3", "mobilenet_v3_small", "mbv3_small"):
+        weights = torchvision.models.MobileNet_V3_Small_Weights.DEFAULT
+
         # Try to find bundled model first
         model_path = None
         if getattr(sys, 'frozen', False):
@@ -47,13 +50,10 @@ def _load_torch_model(embed_model: str):
                 model_path = candidate
 
         if model_path:
-            # Load from local file
             model = torchvision.models.mobilenet_v3_small(weights=None)
             state_dict = torch.load(model_path, map_location="cpu")
             model.load_state_dict(state_dict)
         else:
-            # Fallback to download
-            weights = torchvision.models.MobileNet_V3_Small_Weights.DEFAULT
             model = torchvision.models.mobilenet_v3_small(weights=weights)
 
         feature_dim = model.classifier[0].in_features
