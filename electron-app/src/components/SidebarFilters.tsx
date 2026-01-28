@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react'
-import { Alert, Button, Select, Divider, Switch, Typography, Slider, Radio } from 'antd'
+import { Alert, Button, Select, Divider, Switch, Typography, Slider, Radio, InputNumber } from 'antd'
 import { FolderOpenOutlined, SortAscendingOutlined, SortDescendingOutlined } from '@ant-design/icons'
 import { useStore } from '../store/useStore'
+import { shallow } from 'zustand/shallow'
 
 const { Title, Text } = Typography
 
@@ -17,8 +18,39 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
         photos,
         sortOption, setSortOption,
         filterOption, setFilterOption,
-        config, updateConfig
-    } = useStore()
+        config, updateConfig,
+        viewMode, setViewMode,
+        groupingParams, updateGroupingParams,
+        grouping, setGrouping,
+        groupProgress, setGroupProgress,
+        showOnlyGroupBest, toggleShowOnlyGroupBest,
+    } = useStore(
+        (s) => ({
+            inputDir: s.inputDir,
+            profile: s.profile,
+            setProfile: s.setProfile,
+            showUnusable: s.showUnusable,
+            toggleShowUnusable: s.toggleShowUnusable,
+            photos: s.photos,
+            sortOption: s.sortOption,
+            setSortOption: s.setSortOption,
+            filterOption: s.filterOption,
+            setFilterOption: s.setFilterOption,
+            config: s.config,
+            updateConfig: s.updateConfig,
+            viewMode: s.viewMode,
+            setViewMode: s.setViewMode,
+            groupingParams: s.groupingParams,
+            updateGroupingParams: s.updateGroupingParams,
+            grouping: s.grouping,
+            setGrouping: s.setGrouping,
+            groupProgress: s.groupProgress,
+            setGroupProgress: s.setGroupProgress,
+            showOnlyGroupBest: s.showOnlyGroupBest,
+            toggleShowOnlyGroupBest: s.toggleShowOnlyGroupBest,
+        }),
+        shallow,
+    )
 
     const sortOptions = [
         { label: '文件名', value: 'filename' },
@@ -76,6 +108,17 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
         { label: '夜景 / 暗光', value: 'night' },
     ]
 
+    const handleStartGroup = () => {
+        if (!isElectron || !window.electronAPI) return
+        if (!inputDir) return
+        setGrouping(true)
+        setGroupProgress(null)
+        window.electronAPI.startGroup({
+            inputDir,
+            params: groupingParams,
+        })
+    }
+
     return (
         <div className="p-4 flex flex-col gap-4 h-full">
             {!isElectron && (
@@ -106,6 +149,19 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
             </div>
 
             <Divider className="bg-secondary my-2" />
+
+            <div className="app-panel p-3 flex flex-col gap-2">
+                <Title level={5} className="app-section-title m-0">视图</Title>
+                <Radio.Group
+                    size="small"
+                    value={viewMode}
+                    onChange={(e) => setViewMode(e.target.value)}
+                    buttonStyle="solid"
+                >
+                    <Radio.Button value="all">All Photos</Radio.Button>
+                    <Radio.Button value="grouped">Grouped</Radio.Button>
+                </Radio.Group>
+            </div>
 
             <div className="app-panel p-3 flex flex-col gap-2">
                 <Title level={5} className="app-section-title m-0">场景预设</Title>
@@ -198,6 +254,115 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
                         <Radio.Button value="desc"><SortDescendingOutlined /></Radio.Button>
                     </Radio.Group>
                 </div>
+            </div>
+
+            <Divider className="bg-secondary my-2" />
+
+            <div className="app-panel p-3 flex flex-col gap-2">
+                <Title level={5} className="app-section-title m-0">相似分组</Title>
+
+                <div className="flex justify-between items-center">
+                    <Text className="!text-text text-xs">只显示每组最佳</Text>
+                    <Switch size="small" checked={showOnlyGroupBest} onChange={toggleShowOnlyGroupBest} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                    <div>
+                        <Text type="secondary" className="text-xs">模型</Text>
+                        <Select
+                            size="small"
+                            className="w-full"
+                            value={groupingParams.embedModel}
+                            onChange={(v) => updateGroupingParams({ embedModel: v })}
+                            options={[
+                                { label: 'OpenCV-Hist (无需Torch)', value: 'cv2_hist' },
+                                { label: 'MobileNetV3-Small', value: 'mobilenet_v3_small' },
+                                { label: 'MobileNetV3-Large', value: 'mobilenet_v3_large' },
+                                { label: 'ResNet50', value: 'resnet50' },
+                            ]}
+                        />
+                    </div>
+                    <div>
+                        <Text type="secondary" className="text-xs">缩略长边</Text>
+                        <InputNumber
+                            size="small"
+                            className="w-full"
+                            min={128}
+                            max={768}
+                            step={32}
+                            value={groupingParams.thumbLongEdge}
+                            onChange={(v) => updateGroupingParams({ thumbLongEdge: Number(v ?? 256) })}
+                        />
+                    </div>
+                    <div>
+                        <Text type="secondary" className="text-xs">eps</Text>
+                        <InputNumber
+                            size="small"
+                            className="w-full"
+                            min={0.02}
+                            max={0.5}
+                            step={0.01}
+                            value={groupingParams.eps}
+                            onChange={(v) => updateGroupingParams({ eps: Number(v ?? 0.12) })}
+                        />
+                    </div>
+                    <div>
+                        <Text type="secondary" className="text-xs">min_samples</Text>
+                        <InputNumber
+                            size="small"
+                            className="w-full"
+                            min={1}
+                            max={10}
+                            step={1}
+                            value={groupingParams.minSamples}
+                            onChange={(v) => updateGroupingParams({ minSamples: Number(v ?? 2) })}
+                        />
+                    </div>
+                    <div>
+                        <Text type="secondary" className="text-xs">邻域窗口</Text>
+                        <InputNumber
+                            size="small"
+                            className="w-full"
+                            min={10}
+                            max={300}
+                            step={10}
+                            value={groupingParams.neighborWindow}
+                            onChange={(v) => updateGroupingParams({ neighborWindow: Number(v ?? 80) })}
+                        />
+                    </div>
+                    <div>
+                        <Text type="secondary" className="text-xs">TopK</Text>
+                        <InputNumber
+                            size="small"
+                            className="w-full"
+                            min={1}
+                            max={5}
+                            step={1}
+                            value={groupingParams.topk}
+                            onChange={(v) => updateGroupingParams({ topk: Number(v ?? 2) })}
+                        />
+                    </div>
+                </div>
+
+                <Button
+                    type="primary"
+                    block
+                    disabled={!isElectron || !inputDir || grouping}
+                    loading={grouping}
+                    onClick={handleStartGroup}
+                >
+                    运行相似分组
+                </Button>
+
+                {groupProgress && (
+                    <div className="text-xs text-slate-400 leading-relaxed">
+                        <div>阶段：{groupProgress.stage}</div>
+                        <div>
+                            进度：{groupProgress.done}/{groupProgress.total}
+                            {typeof groupProgress.cache_hit === 'number' ? ` · cache hit: ${groupProgress.cache_hit}` : ''}
+                        </div>
+                    </div>
+                )}
             </div>
             
             <div className="mt-auto">

@@ -6,10 +6,11 @@ import concurrent.futures
 from typing import List, Optional
 from photo_selector.pipeline.models import MetricsResult
 from photo_selector.lr.xmp_writer import XmpWriter
+from photo_selector.config import default_config
 
 logger = logging.getLogger(__name__)
 
-def apply_xmp_logic(result: MetricsResult) -> bool:
+def apply_xmp_logic(result: MetricsResult, group_best_score: Optional[dict] = None) -> bool:
     """
     Determines what to write and calls XmpWriter.
     Returns True if changed.
@@ -52,6 +53,34 @@ def apply_xmp_logic(result: MetricsResult) -> bool:
         else:
             rating = 2
 
+        gid = int(getattr(result, "group_id", -1) or -1)
+        if gid >= 0:
+            if default_config.GROUP_ADD_KEYWORDS:
+                keywords.append(f"AI/Group/{gid}")
+                keywords.append(f"AI/GroupRank/{int(getattr(result, 'rank_in_group', 0) or 0)}")
+
+            if bool(getattr(result, "is_group_best", False)):
+                if default_config.GROUP_ADD_KEYWORDS:
+                    keywords.append("AI/BestInGroup")
+                rank = int(getattr(result, "rank_in_group", 0) or 0)
+                if rank == 1:
+                    rating = max(int(rating), int(default_config.GROUP_TOP1_RATING))
+                else:
+                    rating = max(int(rating), int(default_config.GROUP_BEST_MIN_RATING))
+            else:
+                if default_config.GROUP_ADD_KEYWORDS:
+                    keywords.append("AI/Similar")
+                    if isinstance(group_best_score, dict) and gid in group_best_score:
+                        best = float(group_best_score[gid])
+                        if best - float(result.technical_score) >= float(default_config.GROUP_SIMILAR_BUT_WORSE_DELTA):
+                            keywords.append("AI/SimilarButWorse")
+
+                mode = str(default_config.GROUP_NONBEST_MODE or "keep").lower()
+                if mode == "clear":
+                    rating = 0
+                elif mode == "downgrade":
+                    rating = min(int(rating), int(default_config.GROUP_NONBEST_MAX_RATING))
+
     # Write
     return XmpWriter.update_xmp(xmp_path_2, rating, label, keywords)
 
@@ -63,10 +92,20 @@ def run_stage2(
     
     count_updated = 0
     count_skipped = 0
+
+    best_score_by_group = {}
+    for r in results:
+        gid = int(getattr(r, "group_id", -1) or -1)
+        if gid < 0:
+            continue
+        s = float(getattr(r, "technical_score", 0.0) or 0.0)
+        best_score_by_group[gid] = max(float(best_score_by_group.get(gid, -1e9)), s)
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         # Submit tasks
-        future_to_file = {executor.submit(apply_xmp_logic, res): res.filename for res in results}
+        future_to_file = {
+            executor.submit(apply_xmp_logic, res, best_score_by_group): res.filename for res in results
+        }
         
         for future in concurrent.futures.as_completed(future_to_file):
             fpath = future_to_file[future]

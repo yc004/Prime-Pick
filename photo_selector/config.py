@@ -40,6 +40,13 @@ class Config:
     
     # XMP
     XMP_NAMESPACE_URI: str = "http://ns.adobe.com/xap/1.0/"
+
+    GROUP_BEST_MIN_RATING: int = 4
+    GROUP_TOP1_RATING: int = 5
+    GROUP_NONBEST_MODE: str = "keep"
+    GROUP_NONBEST_MAX_RATING: int = 2
+    GROUP_ADD_KEYWORDS: bool = True
+    GROUP_SIMILAR_BUT_WORSE_DELTA: float = 15.0
     
     # Profile specific overrides (can be implemented as needed)
     

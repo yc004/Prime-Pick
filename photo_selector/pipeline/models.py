@@ -29,6 +29,11 @@ class MetricsResult:
     technical_score: float = 0.0
     is_unusable: bool = False
     reasons: List[str] = field(default_factory=list)
+
+    group_id: int = -1
+    group_size: int = 1
+    rank_in_group: int = 1
+    is_group_best: bool = False
     
     # For caching, we might want to store the raw values as a dict or similar
     # but dataclass is fine.
@@ -39,7 +44,11 @@ class MetricsResult:
             "filename": self.filename,
             "technical_score": self.technical_score,
             "is_unusable": self.is_unusable,
-            "reasons": ";".join(self.reasons)
+            "reasons": ";".join(self.reasons),
+            "group_id": int(self.group_id),
+            "group_size": int(self.group_size),
+            "rank_in_group": int(self.rank_in_group),
+            "is_group_best": bool(self.is_group_best),
         }
         
         if self.sharpness:
@@ -67,6 +76,24 @@ class MetricsResult:
         res.technical_score = float(data.get("technical_score", 0))
         res.is_unusable = str(data.get("is_unusable", "False")).lower() == "true"
         res.reasons = data.get("reasons", "").split(";") if data.get("reasons") else []
+        if "group_id" in data:
+            try:
+                res.group_id = int(float(data.get("group_id", -1)))
+            except Exception:
+                res.group_id = -1
+        if "group_size" in data:
+            try:
+                res.group_size = int(float(data.get("group_size", 1)))
+            except Exception:
+                res.group_size = 1
+        if "rank_in_group" in data:
+            try:
+                res.rank_in_group = int(float(data.get("rank_in_group", 1)))
+            except Exception:
+                res.rank_in_group = 1
+        if "is_group_best" in data:
+            v = data.get("is_group_best", False)
+            res.is_group_best = str(v).lower() == "true" if not isinstance(v, bool) else bool(v)
         
         if "sharpness_score" in data:
             res.sharpness = SharpnessResult(

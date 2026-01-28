@@ -7,7 +7,7 @@ interface TitleBarProps {
   title?: string
 }
 
-const TitleBar: React.FC<TitleBarProps> = ({ title = "AI Photographer" }) => {
+const TitleBar: React.FC<TitleBarProps> = ({ title = "Prime Pick" }) => {
   const handleMinimize = () => {
     try {
       window.electronAPI?.minimize?.()

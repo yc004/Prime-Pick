@@ -5,8 +5,11 @@ console.log('Preload script loaded')
 contextBridge.exposeInMainWorld('electronAPI', {
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
   readResults: (dir: string) => ipcRenderer.invoke('read-results', dir),
+  readGroups: (dir: string) => ipcRenderer.invoke('read-groups', dir),
   startCompute: (args: any) => ipcRenderer.send('start-compute', args),
   cancelCompute: () => ipcRenderer.send('cancel-compute'),
+  startGroup: (args: any) => ipcRenderer.send('start-group', args),
+  cancelGroup: () => ipcRenderer.send('cancel-group'),
   writeXmp: (args: any) => ipcRenderer.send('write-xmp', args),
   
   // Window controls
@@ -23,6 +26,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_: any, code: number) => callback(code)
       ipcRenderer.on('compute-done', handler)
       return () => ipcRenderer.off('compute-done', handler)
+  },
+
+  onGroupProgress: (callback: (data: any) => void) => {
+      const handler = (_: any, data: any) => callback(data)
+      ipcRenderer.on('group-progress', handler)
+      return () => ipcRenderer.off('group-progress', handler)
+  },
+  onGroupDone: (callback: (code: number) => void) => {
+      const handler = (_: any, code: number) => callback(code)
+      ipcRenderer.on('group-done', handler)
+      return () => ipcRenderer.off('group-done', handler)
   },
   
   onWriteXmpProgress: (callback: (data: any) => void) => {

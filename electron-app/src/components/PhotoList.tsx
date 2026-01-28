@@ -1,11 +1,13 @@
-import React, { useMemo, useState } from 'react'
+import React, { useDeferredValue, useMemo, useState } from 'react'
 import { List } from 'react-window'
 import { AutoSizer } from 'react-virtualized-auto-sizer'
 import clsx from 'clsx'
 import { Button, Input, Tag, Typography } from 'antd'
 import { WarningOutlined } from '@ant-design/icons'
 import { useStore } from '../store/useStore'
+import { shallow } from 'zustand/shallow'
 import type { MetricsResult } from '../types'
+import SmartImage from './SmartImage'
 
 const { Text } = Typography
 
@@ -13,7 +15,8 @@ type PhotoRowData = {
   photos: MetricsResult[]
   selectedPhotos: Set<string>
   onRowClick: (filename: string, e: React.MouseEvent) => void
-  getImgSrc: (filename: string) => string | undefined
+  getThumbSrc: (filename: string) => string | undefined
+  getOriginalSrc: (filename: string) => string | undefined
 }
 
 type PhotoRowProps = PhotoRowData & {
@@ -33,12 +36,13 @@ const PhotoRow = ({
   photos,
   selectedPhotos,
   onRowClick,
-  getImgSrc,
+  getThumbSrc,
+  getOriginalSrc,
 }: PhotoRowProps) => {
   const photo = photos[index]
   const isSelected = selectedPhotos.has(photo.filename)
-  const imgSrc = getImgSrc(photo.filename)
-  const [imgOk, setImgOk] = useState(true)
+  const thumbSrc = getThumbSrc(photo.filename)
+  const originalSrc = getOriginalSrc(photo.filename)
 
   return (
     <div
@@ -52,19 +56,13 @@ const PhotoRow = ({
       onClick={(e) => onRowClick(photo.filename, e)}
     >
       <div className="w-24 h-16 bg-black flex-shrink-0 mr-4 overflow-hidden rounded relative">
-        {imgSrc && imgOk ? (
-          <img
-            src={imgSrc}
-            alt={photo.filename}
-            className="w-full h-full object-cover"
-            loading="lazy"
-            onError={() => setImgOk(false)}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-400">
-            无预览
-          </div>
-        )}
+        <SmartImage
+          primarySrc={thumbSrc}
+          fallbackSrc={originalSrc}
+          alt={photo.filename}
+          className="w-full h-full object-cover"
+          placeholder={<div className="w-full h-full flex items-center justify-center text-[10px] text-slate-400">无预览</div>}
+        />
         {photo.is_unusable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50">
             <WarningOutlined className="text-red-500 text-xl" />
@@ -134,10 +132,25 @@ const PhotoList: React.FC<Props> = ({ isElectron }) => {
     sortOption,
     filterOption,
     config,
-  } = useStore()
+  } = useStore(
+    (s) => ({
+      photos: s.photos,
+      showUnusable: s.showUnusable,
+      selectedPhotos: s.selectedPhotos,
+      toggleSelection: s.toggleSelection,
+      selectRange: s.selectRange,
+      clearSelection: s.clearSelection,
+      selectAll: s.selectAll,
+      sortOption: s.sortOption,
+      filterOption: s.filterOption,
+      config: s.config,
+    }),
+    shallow,
+  )
 
   const [keyword, setKeyword] = useState('')
   const [lastClicked, setLastClicked] = useState<string | null>(null)
+  const deferredKeyword = useDeferredValue(keyword)
 
   const filteredPhotos = useMemo(() => {
     // 1. Filter Unusable
@@ -186,10 +199,10 @@ const PhotoList: React.FC<Props> = ({ isElectron }) => {
   }, [photos, showUnusable, sortOption, filterOption, config?.thresholds?.sharpness])
 
   const visiblePhotos = useMemo(() => {
-    const q = keyword.trim().toLowerCase()
+    const q = deferredKeyword.trim().toLowerCase()
     if (!q) return filteredPhotos
     return filteredPhotos.filter((p) => p.filename.toLowerCase().includes(q))
-  }, [filteredPhotos, keyword])
+  }, [filteredPhotos, deferredKeyword])
 
   const onRowClick = (filename: string, e: React.MouseEvent) => {
     const multi = e.metaKey || e.ctrlKey
@@ -206,6 +219,12 @@ const PhotoList: React.FC<Props> = ({ isElectron }) => {
     if (!isElectron) return undefined
     if (!filename) return undefined
     return `media://local/${encodeURIComponent(filename)}`
+  }
+
+  const getThumbSrc = (filename: string) => {
+    if (!isElectron) return undefined
+    if (!filename) return undefined
+    return `thumb://local/${encodeURIComponent(filename)}?w=160&q=55`
   }
 
   if (!List) {
@@ -269,7 +288,8 @@ const PhotoList: React.FC<Props> = ({ isElectron }) => {
                   photos: visiblePhotos,
                   selectedPhotos,
                   onRowClick,
-                  getImgSrc,
+                  getThumbSrc,
+                  getOriginalSrc: getImgSrc,
                 }}
                 style={{ height, width }}
               />

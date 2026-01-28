@@ -3,3 +3,4 @@ __pycache__
 test_images
 .trae
 *.db
+_pycache_

@@ -4,8 +4,11 @@ console.log("Preload script loaded");
 electron.contextBridge.exposeInMainWorld("electronAPI", {
   selectDirectory: () => electron.ipcRenderer.invoke("select-directory"),
   readResults: (dir) => electron.ipcRenderer.invoke("read-results", dir),
+  readGroups: (dir) => electron.ipcRenderer.invoke("read-groups", dir),
   startCompute: (args) => electron.ipcRenderer.send("start-compute", args),
   cancelCompute: () => electron.ipcRenderer.send("cancel-compute"),
+  startGroup: (args) => electron.ipcRenderer.send("start-group", args),
+  cancelGroup: () => electron.ipcRenderer.send("cancel-group"),
   writeXmp: (args) => electron.ipcRenderer.send("write-xmp", args),
   // Window controls
   minimize: () => electron.ipcRenderer.send("window-minimize"),
@@ -20,6 +23,16 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
     const handler = (_, code) => callback(code);
     electron.ipcRenderer.on("compute-done", handler);
     return () => electron.ipcRenderer.off("compute-done", handler);
+  },
+  onGroupProgress: (callback) => {
+    const handler = (_, data) => callback(data);
+    electron.ipcRenderer.on("group-progress", handler);
+    return () => electron.ipcRenderer.off("group-progress", handler);
+  },
+  onGroupDone: (callback) => {
+    const handler = (_, code) => callback(code);
+    electron.ipcRenderer.on("group-done", handler);
+    return () => electron.ipcRenderer.off("group-done", handler);
   },
   onWriteXmpProgress: (callback) => {
     const handler = (_, data) => callback(data);

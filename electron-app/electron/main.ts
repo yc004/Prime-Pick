@@ -1,14 +1,18 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, protocol, nativeImage } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { spawn, ChildProcess } from 'child_process'
+import { spawn } from 'child_process'
+import type { ChildProcess } from 'child_process'
 import fs from 'fs'
 import log from 'electron-log/main'
+import crypto from 'crypto'
 
 // Initialize logger
 log.initialize()
 log.errorHandler.startCatching()
 log.info('Application starting...')
+
+app.setName('Prime Pick')
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -23,6 +27,16 @@ const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'media',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+  {
+    scheme: 'thumb',
     privileges: {
       standard: true,
       secure: true,
@@ -71,6 +85,10 @@ function normalizeMetricsRecord(record: any) {
     technical_score: toNumber(record?.technical_score, 0),
     is_unusable: toBool(record?.is_unusable, false),
     reasons,
+    group_id: toNumber(record?.group_id, -1),
+    group_size: toNumber(record?.group_size, 1),
+    rank_in_group: toNumber(record?.rank_in_group, 1),
+    is_group_best: toBool(record?.is_group_best, false),
   }
 }
 
@@ -120,7 +138,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1400,
     height: 900,
-    icon: path.join(process.env.VITE_PUBLIC, 'logo.svg'),
+    icon: path.join(process.env.VITE_PUBLIC, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       sandbox: false,
@@ -170,6 +188,30 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(() => {
+    const decodeLocalPathFromSchemeUrl = (rawUrl: string, scheme: 'media' | 'thumb') => {
+      const u = new URL(rawUrl)
+      let s = u.toString()
+      const prefix = `${scheme}://local/`
+      if (s.startsWith(prefix)) {
+        s = s.slice(prefix.length)
+      } else {
+        const fallback = `${scheme}://`
+        if (s.startsWith(fallback)) s = s.slice(fallback.length)
+      }
+
+      const qIndex = s.indexOf('?')
+      if (qIndex >= 0) s = s.slice(0, qIndex)
+
+      const decoded = decodeURIComponent(s)
+      let filePath = decoded
+      if (process.platform === 'win32') {
+        if (filePath.startsWith('/') && !filePath.startsWith('//') && /^\/[a-zA-Z]:/.test(filePath)) {
+          filePath = filePath.slice(1)
+        }
+      }
+      return filePath
+    }
+
     protocol.registerFileProtocol('media', (request, callback) => {
       try {
         let url = request.url
@@ -198,6 +240,63 @@ app.whenReady().then(() => {
         callback({ path: filePath })
       } catch (e) {
         log.error('Media protocol error:', e)
+        callback({ error: -324 })
+      }
+    })
+
+    const thumbDir = path.join(app.getPath('userData'), 'thumb_cache')
+    try {
+      fs.mkdirSync(thumbDir, { recursive: true })
+    } catch {}
+
+    const inFlightThumbs = new Map<string, Promise<string>>()
+
+    const ensureThumb = async (srcPath: string, width: number, quality: number) => {
+      const st = fs.statSync(srcPath)
+      const keyRaw = `${srcPath}|${st.size}|${st.mtimeMs}|w=${width}|q=${quality}`
+      const key = crypto.createHash('sha1').update(keyRaw).digest('hex')
+      const outPath = path.join(thumbDir, `${key}.jpg`)
+      if (fs.existsSync(outPath)) return outPath
+
+      const existing = inFlightThumbs.get(outPath)
+      if (existing) return existing
+
+      const p = (async () => {
+        let image = await nativeImage.createThumbnailFromPath(srcPath, { width, height: width })
+        if (image.isEmpty()) {
+          image = nativeImage.createFromPath(srcPath).resize({ width, height: width })
+        }
+        if (image.isEmpty()) {
+          throw new Error('Empty thumbnail')
+        }
+        const buf = image.toJPEG(quality)
+        if (!buf || buf.length < 16) {
+          throw new Error('Invalid JPEG buffer')
+        }
+        fs.writeFileSync(outPath, buf)
+        return outPath
+      })()
+        .catch(() => srcPath)
+        .finally(() => inFlightThumbs.delete(outPath))
+
+      inFlightThumbs.set(outPath, p)
+      return p
+    }
+
+    protocol.registerFileProtocol('thumb', (request, callback) => {
+      try {
+        const u = new URL(request.url)
+        const w = Number(u.searchParams.get('w') ?? 160)
+        const q = Number(u.searchParams.get('q') ?? 55)
+        const width = Number.isFinite(w) ? Math.min(Math.max(Math.floor(w), 64), 512) : 160
+        const quality = Number.isFinite(q) ? Math.min(Math.max(Math.floor(q), 30), 85) : 55
+        const srcPath = decodeLocalPathFromSchemeUrl(request.url, 'thumb')
+
+        ensureThumb(srcPath, width, quality)
+          .then((p) => callback({ path: p }))
+          .catch(() => callback({ path: srcPath }))
+      } catch (e) {
+        log.error('Thumb protocol error:', e)
         callback({ error: -324 })
       }
     })
@@ -240,6 +339,18 @@ function setupIpc() {
           }
         }
         return null
+    })
+
+    ipcMain.handle('read-groups', async (_, dirPath) => {
+        const groupsPath = path.join(dirPath, 'groups.json')
+        if (!fs.existsSync(groupsPath)) return null
+        try {
+            const data = fs.readFileSync(groupsPath, 'utf-8')
+            return JSON.parse(data)
+        } catch (e) {
+            log.error("Failed to read groups.json", e)
+            return null
+        }
     })
 
     ipcMain.on('start-compute', (event, args) => {
@@ -297,7 +408,73 @@ function setupIpc() {
         })
     })
 
+    ipcMain.on('start-group', (event, args) => {
+        if (pythonProcess) {
+            pythonProcess.kill()
+        }
+
+        const { inputDir, params } = args
+        const projectRoot = path.resolve(__dirname, '../../')
+        const scriptPath = path.join(projectRoot, 'photo_selector/cli.py')
+
+        const p = params ?? {}
+        const cliArgs = [
+            scriptPath,
+            'group',
+            '--input-dir', inputDir,
+            '--output-dir', inputDir,
+            '--embed-model', String(p.embedModel ?? 'mobilenet_v3_small'),
+            '--thumb-long-edge', String(p.thumbLongEdge ?? 256),
+            '--eps', String(p.eps ?? 0.12),
+            '--min-samples', String(p.minSamples ?? 2),
+            '--neighbor-window', String(p.neighborWindow ?? 80),
+            '--topk', String(p.topk ?? 2),
+            '--workers', String(p.workers ?? 4),
+            '--batch-size', String(p.batchSize ?? 32),
+        ]
+
+        log.info("Starting group:", scriptPath, "in", projectRoot, cliArgs.join(' '))
+
+        pythonProcess = spawn('python', cliArgs, {
+            cwd: projectRoot,
+            env: { ...process.env, PYTHONPATH: projectRoot }
+        })
+
+        pythonProcess.stdout?.on('data', (data) => {
+            const lines = data.toString().split('\n')
+            for (const line of lines) {
+                if (!line.trim()) continue
+                try {
+                    const json = JSON.parse(line)
+                    event.reply('group-progress', json)
+                } catch (e) {
+                    log.info("group stdout:", line)
+                }
+            }
+        })
+
+        pythonProcess.stderr?.on('data', (data) => {
+            const msg = data.toString()
+            log.error(`group stderr: ${msg}`)
+        })
+
+        pythonProcess.on('close', (code) => {
+            event.reply('group-done', code)
+            pythonProcess = null
+            if (code !== 0) {
+                sendError("相似分组失败", `进程异常退出，退出码: ${code}`)
+            }
+        })
+    })
+
     ipcMain.on('cancel-compute', () => {
+        if (pythonProcess) {
+            pythonProcess.kill()
+            pythonProcess = null
+        }
+    })
+
+    ipcMain.on('cancel-group', () => {
         if (pythonProcess) {
             pythonProcess.kill()
             pythonProcess = null

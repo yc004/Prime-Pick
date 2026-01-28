@@ -1,5 +1,5 @@
-import { create } from 'zustand'
-import type { AppState, MetricsResult } from '../types'
+import { createWithEqualityFn } from 'zustand/traditional'
+import type { AppState, MetricsResult, GroupsFile } from '../types'
 
 export interface SortOption {
     field: string
@@ -14,6 +14,17 @@ export interface FilterOption {
 interface Store extends AppState {
     setInputDir: (dir: string) => void
     setPhotos: (photos: MetricsResult[]) => void
+    setGroups: (groups: GroupsFile | null) => void
+    setViewMode: (mode: AppState['viewMode']) => void
+    setSidebarVisible: (visible: boolean) => void
+    setRightPanelVisible: (visible: boolean) => void
+    toggleSidebarVisible: () => void
+    toggleRightPanelVisible: () => void
+    setSelectedGroupId: (groupId: number | null) => void
+    toggleShowOnlyGroupBest: () => void
+    updateGroupingParams: (params: Partial<AppState['groupingParams']>) => void
+    setGrouping: (value: boolean) => void
+    setGroupProgress: (p: AppState['groupProgress']) => void
     toggleSelection: (filename: string, multi: boolean) => void
     selectRange: (start: string, end: string) => void
     clearSelection: () => void
@@ -30,10 +41,26 @@ interface Store extends AppState {
     filterOption: FilterOption
 }
 
-export const useStore = create<Store>((set) => ({
+export const useStore = createWithEqualityFn<Store>((set) => ({
     inputDir: null,
     photos: [],
+    groups: null,
     selectedPhotos: new Set(),
+    viewMode: 'all',
+    selectedGroupId: null,
+    showOnlyGroupBest: false,
+    groupingParams: {
+        embedModel: 'mobilenet_v3_small',
+        thumbLongEdge: 256,
+        eps: 0.12,
+        minSamples: 2,
+        neighborWindow: 80,
+        topk: 2,
+        workers: 4,
+        batchSize: 32,
+    },
+    grouping: false,
+    groupProgress: null,
     profile: 'daylight',
     showUnusable: true,
     sortOption: { field: 'filename', order: 'asc' },
@@ -46,9 +73,22 @@ export const useStore = create<Store>((set) => ({
     computing: false,
     progress: null,
     rebuildCache: false,
+    sidebarVisible: true,
+    rightPanelVisible: true,
 
     setInputDir: (dir) => set({ inputDir: dir }),
     setPhotos: (photos) => set({ photos }),
+    setGroups: (groups) => set({ groups }),
+    setViewMode: (mode) => set({ viewMode: mode }),
+    setSidebarVisible: (visible) => set({ sidebarVisible: visible }),
+    setRightPanelVisible: (visible) => set({ rightPanelVisible: visible }),
+    toggleSidebarVisible: () => set((state) => ({ sidebarVisible: !state.sidebarVisible })),
+    toggleRightPanelVisible: () => set((state) => ({ rightPanelVisible: !state.rightPanelVisible })),
+    setSelectedGroupId: (groupId) => set({ selectedGroupId: groupId }),
+    toggleShowOnlyGroupBest: () => set((state) => ({ showOnlyGroupBest: !state.showOnlyGroupBest })),
+    updateGroupingParams: (params) => set((state) => ({ groupingParams: { ...state.groupingParams, ...params } })),
+    setGrouping: (value) => set({ grouping: value }),
+    setGroupProgress: (p) => set({ groupProgress: p }),
     toggleSelection: (filename, multi) => set((state) => {
         const newSet = multi ? new Set(state.selectedPhotos) : new Set<string>()
         if (multi && newSet.has(filename)) {

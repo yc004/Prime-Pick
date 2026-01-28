@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Typography, Slider, InputNumber, Button, Divider, Progress, Tag, Switch } from 'antd'
 import { useStore } from '../store/useStore'
+import { shallow } from 'zustand/shallow'
 
 const { Title, Text } = Typography
 
@@ -12,7 +13,21 @@ const RightPanel: React.FC<Props> = ({ isElectron }) => {
     const { 
         selectedPhotos, photos, config, updateConfig, 
         computing, progress, inputDir, profile, rebuildCache, setRebuildCache
-    } = useStore()
+    } = useStore(
+        (s) => ({
+            selectedPhotos: s.selectedPhotos,
+            photos: s.photos,
+            config: s.config,
+            updateConfig: s.updateConfig,
+            computing: s.computing,
+            progress: s.progress,
+            inputDir: s.inputDir,
+            profile: s.profile,
+            rebuildCache: s.rebuildCache,
+            setRebuildCache: s.setRebuildCache,
+        }),
+        shallow,
+    )
 
     const lastSelected = Array.from(selectedPhotos).pop()
     const selectedPhoto = lastSelected ? photos.find(p => p.filename === lastSelected) : null
