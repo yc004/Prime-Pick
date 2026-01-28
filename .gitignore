@@ -7,3 +7,5 @@ _pycache_
 build
 electron-app
 engine_build_venv
+*.exe
+dist
