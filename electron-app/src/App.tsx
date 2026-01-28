@@ -10,7 +10,7 @@ import { useStore } from './store/useStore'
 const App: React.FC = () => {
   const { 
     setInputDir, setPhotos, setComputing, setProgress, 
-    computing, inputDir 
+    inputDir 
   } = useStore()
 
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -89,7 +89,7 @@ const App: React.FC = () => {
         }
     })
 
-    const offXmpProgress = window.electronAPI.onWriteXmpProgress((data) => {
+    const offXmpProgress = window.electronAPI.onWriteXmpProgress(() => {
         // Handle xmp progress if we want separate UI
     })
     

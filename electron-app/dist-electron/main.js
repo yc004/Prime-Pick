@@ -1,276 +1,209 @@
-import { app, protocol, BrowserWindow, ipcMain, dialog } from "electron";
-import path from "path";
-import { fileURLToPath } from "url";
-import { spawn } from "child_process";
-import fs from "fs";
-const __dirname$1 = path.dirname(fileURLToPath(import.meta.url));
-process.env.DIST = path.join(__dirname$1, "../dist");
-process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(__dirname$1, "../public");
-let win;
-let pythonProcess = null;
-const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
-protocol.registerSchemesAsPrivileged([
+import { app as d, protocol as F, BrowserWindow as T, ipcMain as h, dialog as N } from "electron";
+import l from "path";
+import { fileURLToPath as v } from "url";
+import { spawn as b } from "child_process";
+import y from "fs";
+const S = l.dirname(v(import.meta.url));
+process.env.DIST = l.join(S, "../dist");
+process.env.VITE_PUBLIC = d.isPackaged ? process.env.DIST : l.join(S, "../public");
+let m, u = null;
+const A = process.env.VITE_DEV_SERVER_URL;
+F.registerSchemesAsPrivileged([
   {
     scheme: "media",
     privileges: {
-      standard: true,
-      secure: true,
-      supportFetchAPI: true,
-      corsEnabled: true,
-      stream: true
+      standard: !0,
+      secure: !0,
+      supportFetchAPI: !0,
+      corsEnabled: !0,
+      stream: !0
     }
   }
 ]);
-function splitDelimited(value) {
-  if (Array.isArray(value)) return value.map((v) => String(v)).filter((v) => v.trim().length > 0);
-  if (typeof value === "string") return value.split(";").map((v) => v.trim()).filter((v) => v.length > 0);
-  return [];
+function I(e) {
+  return Array.isArray(e) ? e.map((t) => String(t)).filter((t) => t.trim().length > 0) : typeof e == "string" ? e.split(";").map((t) => t.trim()).filter((t) => t.length > 0) : [];
 }
-function toNumber(value, fallback = 0) {
-  const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) ? n : fallback;
+function P(e, t = 0) {
+  const o = typeof e == "number" ? e : Number(e);
+  return Number.isFinite(o) ? o : t;
 }
-function toBool(value, fallback = false) {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    const v = value.trim().toLowerCase();
-    if (v === "true") return true;
-    if (v === "false") return false;
+function D(e, t = !1) {
+  if (typeof e == "boolean") return e;
+  if (typeof e == "string") {
+    const o = e.trim().toLowerCase();
+    if (o === "true") return !0;
+    if (o === "false") return !1;
   }
-  if (typeof value === "number") return value !== 0;
-  return fallback;
+  return typeof e == "number" ? e !== 0 : t;
 }
-function normalizeMetricsRecord(record) {
-  const sharpnessScore = toNumber(record?.sharpness?.score ?? record?.sharpness_score, 0);
-  const isBlurry = toBool(record?.sharpness?.is_blurry ?? record?.is_blurry, false);
-  const exposureScore = toNumber(record?.exposure?.score ?? record?.exposure_score, 0);
-  const exposureFlags = Array.isArray(record?.exposure?.flags) ? record.exposure.flags.map((v) => String(v)) : splitDelimited(record?.exposure_flags);
-  const reasons = Array.isArray(record?.reasons) ? record.reasons.map((v) => String(v)) : splitDelimited(record?.reasons);
+function R(e) {
+  const t = P(e?.sharpness?.score ?? e?.sharpness_score, 0), o = D(e?.sharpness?.is_blurry ?? e?.is_blurry, !1), a = P(e?.exposure?.score ?? e?.exposure_score, 0), s = Array.isArray(e?.exposure?.flags) ? e.exposure.flags.map((c) => String(c)) : I(e?.exposure_flags), n = Array.isArray(e?.reasons) ? e.reasons.map((c) => String(c)) : I(e?.reasons);
   return {
-    filename: String(record?.filename ?? ""),
-    sharpness: { score: sharpnessScore, is_blurry: isBlurry },
-    exposure: { score: exposureScore, flags: exposureFlags },
-    technical_score: toNumber(record?.technical_score, 0),
-    is_unusable: toBool(record?.is_unusable, false),
-    reasons
+    filename: String(e?.filename ?? ""),
+    sharpness: { score: t, is_blurry: o },
+    exposure: { score: a, flags: s },
+    technical_score: P(e?.technical_score, 0),
+    is_unusable: D(e?.is_unusable, !1),
+    reasons: n
   };
 }
-function parseCsv(content) {
-  const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return [];
-  const parseLine = (line) => {
-    const out = [];
-    let cur = "";
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        const next = line[i + 1];
-        if (inQuotes && next === '"') {
-          cur += '"';
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
+function O(e) {
+  const t = e.split(/\r?\n/).filter((n) => n.trim().length > 0);
+  if (t.length === 0) return [];
+  const o = (n) => {
+    const c = [];
+    let r = "", i = !1;
+    for (let f = 0; f < n.length; f++) {
+      const p = n[f];
+      if (p === '"') {
+        const w = n[f + 1];
+        i && w === '"' ? (r += '"', f += 1) : i = !i;
         continue;
       }
-      if (ch === "," && !inQuotes) {
-        out.push(cur);
-        cur = "";
+      if (p === "," && !i) {
+        c.push(r), r = "";
         continue;
       }
-      cur += ch;
+      r += p;
     }
-    out.push(cur);
-    return out;
-  };
-  const headers = parseLine(lines[0]).map((h) => h.trim());
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseLine(lines[i]);
-    const row = {};
-    for (let j = 0; j < headers.length; j++) row[headers[j]] = values[j] ?? "";
-    rows.push(row);
+    return c.push(r), c;
+  }, a = o(t[0]).map((n) => n.trim()), s = [];
+  for (let n = 1; n < t.length; n++) {
+    const c = o(t[n]), r = {};
+    for (let i = 0; i < a.length; i++) r[a[i]] = c[i] ?? "";
+    s.push(r);
   }
-  return rows;
+  return s;
 }
-function createWindow() {
-  win = new BrowserWindow({
+function E() {
+  m = new T({
     width: 1400,
     height: 900,
-    icon: path.join(process.env.VITE_PUBLIC, "logo.svg"),
+    icon: l.join(process.env.VITE_PUBLIC, "logo.svg"),
     webPreferences: {
-      preload: path.join(__dirname$1, "preload.cjs"),
-      sandbox: false,
-      contextIsolation: true,
-      nodeIntegration: false
+      preload: l.join(S, "preload.cjs"),
+      sandbox: !1,
+      contextIsolation: !0,
+      nodeIntegration: !1
     },
     titleBarStyle: "hidden",
     // Custom title bar
-    autoHideMenuBar: true,
+    autoHideMenuBar: !0,
     backgroundColor: "#020617"
     // Match design system
-  });
-  ipcMain.on("window-minimize", () => win?.minimize());
-  ipcMain.on("window-maximize", () => {
-    if (win?.isMaximized()) {
-      win.unmaximize();
-    } else {
-      win?.maximize();
-    }
-  });
-  ipcMain.on("window-close", () => win?.close());
-  if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL);
-  } else {
-    win.loadFile(path.join(process.env.DIST, "index.html"));
-  }
+  }), h.on("window-minimize", () => m?.minimize()), h.on("window-maximize", () => {
+    m?.isMaximized() ? m.unmaximize() : m?.maximize();
+  }), h.on("window-close", () => m?.close()), A ? m.loadURL(A) : m.loadFile(l.join(process.env.DIST, "index.html"));
 }
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-    if (pythonProcess) {
-      pythonProcess.kill();
-    }
-  }
+d.on("window-all-closed", () => {
+  process.platform !== "darwin" && (d.quit(), u && u.kill());
 });
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+d.on("activate", () => {
+  T.getAllWindows().length === 0 && E();
 });
-app.whenReady().then(() => {
-  protocol.registerFileProtocol("media", (request, callback) => {
+d.whenReady().then(() => {
+  F.registerFileProtocol("media", (e, t) => {
     try {
-      const url = request.url.replace(/^media:\/\//, "");
-      const decoded = decodeURIComponent(url);
-      callback({ path: decoded });
-    } catch (e) {
-      callback({ error: -324 });
+      const o = e.url.replace(/^media:\/\//, ""), a = decodeURIComponent(o);
+      t({ path: a });
+    } catch {
+      t({ error: -324 });
     }
-  });
-  createWindow();
-  setupIpc();
+  }), E(), L();
 });
-function setupIpc() {
-  ipcMain.handle("select-directory", async () => {
-    const result = await dialog.showOpenDialog(win, {
+function L() {
+  h.handle("select-directory", async () => {
+    const e = await N.showOpenDialog(m, {
       properties: ["openDirectory"]
     });
-    if (result.canceled) return null;
-    return result.filePaths[0];
-  });
-  ipcMain.handle("read-results", async (_, dirPath) => {
-    const jsonPath = path.join(dirPath, "results.json");
-    if (fs.existsSync(jsonPath)) {
+    return e.canceled ? null : e.filePaths[0];
+  }), h.handle("read-results", async (e, t) => {
+    const o = l.join(t, "results.json");
+    if (y.existsSync(o))
       try {
-        const data = fs.readFileSync(jsonPath, "utf-8");
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed)) return parsed.map(normalizeMetricsRecord);
-        return parsed;
-      } catch (e) {
-        console.error("Failed to read results.json", e);
-        return null;
+        const s = y.readFileSync(o, "utf-8"), n = JSON.parse(s);
+        return Array.isArray(n) ? n.map(R) : n;
+      } catch (s) {
+        return console.error("Failed to read results.json", s), null;
       }
-    }
-    const csvPath = path.join(dirPath, "results.csv");
-    if (fs.existsSync(csvPath)) {
+    const a = l.join(t, "results.csv");
+    if (y.existsSync(a))
       try {
-        const data = fs.readFileSync(csvPath, "utf-8");
-        const parsed = parseCsv(data);
-        return parsed.map(normalizeMetricsRecord);
-      } catch (e) {
-        console.error("Failed to read results.csv", e);
-        return null;
+        const s = y.readFileSync(a, "utf-8");
+        return O(s).map(R);
+      } catch (s) {
+        return console.error("Failed to read results.csv", s), null;
       }
-    }
     return null;
-  });
-  ipcMain.on("start-compute", (event, args) => {
-    if (pythonProcess) {
-      pythonProcess.kill();
-    }
-    const { inputDir, profile, config, rebuildCache } = args;
-    const configPath = path.join(app.getPath("userData"), "temp_config.json");
-    fs.writeFileSync(configPath, JSON.stringify(config));
-    const projectRoot = path.resolve(__dirname$1, "../../");
-    const scriptPath = path.join(projectRoot, "photo_selector/cli.py");
-    console.log("Spawning python:", scriptPath, "in", projectRoot);
-    const cliArgs = [
-      scriptPath,
+  }), h.on("start-compute", (e, t) => {
+    u && u.kill();
+    const { inputDir: o, profile: a, config: s, rebuildCache: n } = t, c = l.join(d.getPath("userData"), "temp_config.json");
+    y.writeFileSync(c, JSON.stringify(s));
+    const r = l.resolve(S, "../../"), i = l.join(r, "photo_selector/cli.py");
+    console.log("Spawning python:", i, "in", r);
+    const f = [
+      i,
       "compute",
       "--input-dir",
-      inputDir,
+      o,
       "--profile",
-      profile,
+      a,
       "--config-json",
-      configPath
+      c
     ];
-    if (rebuildCache) cliArgs.push("--rebuild-cache");
-    pythonProcess = spawn("python", cliArgs, {
-      cwd: projectRoot,
-      env: { ...process.env, PYTHONPATH: projectRoot }
+    n && f.push("--rebuild-cache"), u = b("python", f, {
+      cwd: r,
+      env: { ...process.env, PYTHONPATH: r }
+    }), u.stdout?.on("data", (p) => {
+      const w = p.toString().split(`
+`);
+      for (const g of w)
+        if (g.trim())
+          try {
+            const j = JSON.parse(g);
+            e.reply("compute-progress", j);
+          } catch {
+            console.log("Python stdout:", g);
+          }
+    }), u.stderr?.on("data", (p) => {
+      console.error(`Python stderr: ${p}`);
+    }), u.on("close", (p) => {
+      e.reply("compute-done", p), u = null;
     });
-    pythonProcess.stdout?.on("data", (data) => {
-      const lines = data.toString().split("\n");
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const json = JSON.parse(line);
-          event.reply("compute-progress", json);
-        } catch (e) {
-          console.log("Python stdout:", line);
-        }
-      }
-    });
-    pythonProcess.stderr?.on("data", (data) => {
-      console.error(`Python stderr: ${data}`);
-    });
-    pythonProcess.on("close", (code) => {
-      event.reply("compute-done", code);
-      pythonProcess = null;
-    });
-  });
-  ipcMain.on("cancel-compute", () => {
-    if (pythonProcess) {
-      pythonProcess.kill();
-      pythonProcess = null;
-    }
-  });
-  ipcMain.on("write-xmp", (event, args) => {
-    const { inputDir, selection, config, onlySelected } = args;
-    const selectionPath = path.join(app.getPath("userData"), "temp_selection.json");
-    fs.writeFileSync(selectionPath, JSON.stringify(selection));
-    const configPath = path.join(app.getPath("userData"), "temp_config.json");
-    fs.writeFileSync(configPath, JSON.stringify(config));
-    const projectRoot = path.resolve(__dirname$1, "../../");
-    const scriptPath = path.join(projectRoot, "photo_selector/cli.py");
-    const cliArgs = [
-      scriptPath,
+  }), h.on("cancel-compute", () => {
+    u && (u.kill(), u = null);
+  }), h.on("write-xmp", (e, t) => {
+    const { inputDir: o, selection: a, config: s, onlySelected: n } = t, c = l.join(d.getPath("userData"), "temp_selection.json");
+    y.writeFileSync(c, JSON.stringify(a));
+    const r = l.join(d.getPath("userData"), "temp_config.json");
+    y.writeFileSync(r, JSON.stringify(s));
+    const i = l.resolve(S, "../../"), p = [
+      l.join(i, "photo_selector/cli.py"),
       "write-xmp",
       "--input-dir",
-      inputDir,
+      o,
       "--selection-file",
-      selectionPath,
+      c,
       "--config-json",
-      configPath
+      r
     ];
-    if (onlySelected) cliArgs.push("--only-selected");
-    const child = spawn("python", cliArgs, {
-      cwd: projectRoot,
-      env: { ...process.env, PYTHONPATH: projectRoot }
+    n && p.push("--only-selected");
+    const w = b("python", p, {
+      cwd: i,
+      env: { ...process.env, PYTHONPATH: i }
     });
-    child.stdout?.on("data", (data) => {
-      const lines = data.toString().split("\n");
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const json = JSON.parse(line);
-          event.reply("write-xmp-progress", json);
-        } catch (e) {
-        }
-      }
-    });
-    child.on("close", (code) => {
-      event.reply("write-xmp-done", code);
+    w.stdout?.on("data", (g) => {
+      const j = g.toString().split(`
+`);
+      for (const _ of j)
+        if (_.trim())
+          try {
+            const x = JSON.parse(_);
+            e.reply("write-xmp-progress", x);
+          } catch {
+          }
+    }), w.on("close", (g) => {
+      e.reply("write-xmp-done", g);
     });
   });
 }

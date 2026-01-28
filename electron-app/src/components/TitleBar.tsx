@@ -1,5 +1,6 @@
 import React from 'react'
 import { MinusOutlined, BorderOutlined, CloseOutlined } from '@ant-design/icons'
+import Logo from './Logo'
 
 
 interface TitleBarProps {

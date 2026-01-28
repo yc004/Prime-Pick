@@ -9,19 +9,32 @@ import type { MetricsResult } from '../types'
 
 const { Text } = Typography
 
-type PhotoRowProps = {
+type PhotoRowData = {
+  photos: MetricsResult[]
+  selectedPhotos: Set<string>
+  onRowClick: (filename: string, e: React.MouseEvent) => void
+  getImgSrc: (filename: string) => string | undefined
+}
+
+type PhotoRowProps = PhotoRowData & {
   index: number
   style: React.CSSProperties
-  data: {
-      photos: MetricsResult[]
-      selectedPhotos: Set<string>
-      onRowClick: (filename: string, e: React.MouseEvent) => void
-      getImgSrc: (filename: string) => string | undefined
+  ariaAttributes: {
+    'aria-posinset': number
+    'aria-setsize': number
+    role: 'listitem'
   }
 }
 
-const PhotoRow = ({ index, style, data }: PhotoRowProps) => {
-  const { photos, selectedPhotos, onRowClick, getImgSrc } = data
+const PhotoRow = ({
+  index,
+  style,
+  ariaAttributes,
+  photos,
+  selectedPhotos,
+  onRowClick,
+  getImgSrc,
+}: PhotoRowProps) => {
   const photo = photos[index]
   const isSelected = selectedPhotos.has(photo.filename)
   const imgSrc = getImgSrc(photo.filename)
@@ -29,6 +42,7 @@ const PhotoRow = ({ index, style, data }: PhotoRowProps) => {
 
   return (
     <div
+      {...ariaAttributes}
       style={style}
       className={clsx(
         'flex items-center p-2 border-b border-secondary/80 hover:bg-secondary/40 cursor-pointer transition-colors select-none',
@@ -198,24 +212,26 @@ const PhotoList: React.FC<Props> = ({ isElectron }) => {
       </div>
 
       <div className="flex-1 min-h-0">
-        <AutoSizer style={{ width: '100%', height: '100%' }}>
-          {({ height, width }) => (
-            <List
-              height={height}
-              itemCount={visiblePhotos.length}
-              itemSize={100}
-              width={width}
-              itemData={{
-                photos: visiblePhotos,
-                selectedPhotos,
-                onRowClick,
-                getImgSrc
-              }}
-            >
-              {PhotoRow}
-            </List>
-          )}
-        </AutoSizer>
+        <AutoSizer
+          style={{ width: '100%', height: '100%' }}
+          renderProp={({ height, width }) => {
+            if (height == null || width == null) return null
+            return (
+              <List<PhotoRowData>
+                rowCount={visiblePhotos.length}
+                rowHeight={100}
+                rowComponent={PhotoRow}
+                rowProps={{
+                  photos: visiblePhotos,
+                  selectedPhotos,
+                  onRowClick,
+                  getImgSrc,
+                }}
+                style={{ height, width }}
+              />
+            )
+          }}
+        />
       </div>
 
       {!isElectron && (

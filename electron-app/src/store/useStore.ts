@@ -16,7 +16,7 @@ interface Store extends AppState {
     setRebuildCache: (value: boolean) => void
 }
 
-export const useStore = create<Store>((set, get) => ({
+export const useStore = create<Store>((set) => ({
     inputDir: null,
     photos: [],
     selectedPhotos: new Set(),
@@ -34,7 +34,7 @@ export const useStore = create<Store>((set, get) => ({
     setInputDir: (dir) => set({ inputDir: dir }),
     setPhotos: (photos) => set({ photos }),
     toggleSelection: (filename, multi) => set((state) => {
-        const newSet = multi ? new Set(state.selectedPhotos) : new Set()
+        const newSet = multi ? new Set(state.selectedPhotos) : new Set<string>()
         if (multi && newSet.has(filename)) {
             newSet.delete(filename)
         } else {
