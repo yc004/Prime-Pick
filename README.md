@@ -86,6 +86,12 @@ npm run dev
 
 推荐在项目根目录执行命令（与桌面端一致）。
 
+典型流程：
+
+1. `compute` 生成评分结果（`results.*`）
+2. （可选）`group` 做相似分组（生成 `groups.json`，并把分组字段写回 `results.*`）
+3. `write-xmp` 生成/更新 XMP sidecar
+
 #### 1) 计算指标（生成 results.csv / results.json）
 
 ```bash
@@ -94,7 +100,8 @@ python photo_selector/cli.py compute --input-dir "你的图片目录" --profile 
 
 - 输出：默认写入 `--input-dir`（可用 `--output-dir` 指定输出目录）
 - 产物：`results.csv`、`results.json`
-- 缓存：会在当前工作目录生成 `cache.db`（用于加速重复运行）
+- 缓存：会在当前工作目录生成 `cache.db`（用于加速重复运行；从项目根目录运行时通常在根目录生成）
+- 输出流：进度/完成事件以 JSON 行写到 stdout，日志写到 stderr（GUI 解析 stdout）
 
 #### 2) 相似分组（生成 groups.json，并把分组字段写回 results.*）
 
@@ -129,6 +136,13 @@ python photo_selector/cli.py write-xmp --input-dir "你的图片目录" --only-s
 ```
 
 XMP 文件命名采用标准 sidecar：`photo.jpg -> photo.xmp`（基于去扩展名的 base filename）。
+
+#### 清理缓存（可选）
+
+当你调整了阈值/权重、或想强制重算/重分组时，可以删除缓存文件：
+
+- 评分缓存：`cache.db`（通常在项目根目录，或你执行命令的当前目录）
+- 分组 embedding 缓存：`embedding_cache.db`（在 `--output-dir`）
 
 ## 配置说明（config-json）
 
