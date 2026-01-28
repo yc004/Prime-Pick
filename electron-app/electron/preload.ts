@@ -34,5 +34,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_: any, code: number) => callback(code)
       ipcRenderer.on('write-xmp-done', handler)
       return () => ipcRenderer.off('write-xmp-done', handler)
-  }
+  },
+
+  onError: (callback: (error: { title: string; content: string }) => void) => {
+    const handler = (_: any, error: any) => callback(error)
+    ipcRenderer.on('app-error', handler)
+    return () => ipcRenderer.off('app-error', handler)
+  },
+
+  // Logging
+  logInfo: (message: string) => ipcRenderer.send('log-info', message),
+  logError: (message: string) => ipcRenderer.send('log-error', message)
 })

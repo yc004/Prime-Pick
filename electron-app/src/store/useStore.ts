@@ -1,6 +1,16 @@
 import { create } from 'zustand'
 import type { AppState, MetricsResult } from '../types'
 
+export interface SortOption {
+    field: string
+    order: 'asc' | 'desc'
+}
+
+export interface FilterOption {
+    minScore: number
+    blurryMode: 'all' | 'only' | 'exclude'
+}
+
 interface Store extends AppState {
     setInputDir: (dir: string) => void
     setPhotos: (photos: MetricsResult[]) => void
@@ -14,6 +24,10 @@ interface Store extends AppState {
     setProgress: (progress: { done: number, total: number } | null) => void
     toggleShowUnusable: () => void
     setRebuildCache: (value: boolean) => void
+    setSortOption: (option: SortOption) => void
+    setFilterOption: (option: Partial<FilterOption>) => void
+    sortOption: SortOption
+    filterOption: FilterOption
 }
 
 export const useStore = create<Store>((set) => ({
@@ -22,6 +36,8 @@ export const useStore = create<Store>((set) => ({
     selectedPhotos: new Set(),
     profile: 'daylight',
     showUnusable: true,
+    sortOption: { field: 'filename', order: 'asc' },
+    filterOption: { minScore: 0, blurryMode: 'all' },
     config: {
         max_long_edge: 1024,
         weights: { sharpness: 1.0, exposure: 1.0 },
@@ -64,4 +80,6 @@ export const useStore = create<Store>((set) => ({
     setProgress: (p) => set({ progress: p }),
     toggleShowUnusable: () => set((state) => ({ showUnusable: !state.showUnusable })),
     setRebuildCache: (value) => set({ rebuildCache: value }),
+    setSortOption: (option) => set({ sortOption: option }),
+    setFilterOption: (option) => set((state) => ({ filterOption: { ...state.filterOption, ...option } })),
 }))

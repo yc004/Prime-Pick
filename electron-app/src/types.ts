@@ -7,6 +7,16 @@ export interface MetricsResult {
     reasons: string[]
 }
 
+export interface SortOption {
+    field: string
+    order: 'asc' | 'desc'
+}
+
+export interface FilterOption {
+    minScore: number
+    blurryMode: 'all' | 'only' | 'exclude'
+}
+
 export interface AppState {
     inputDir: string | null
     photos: MetricsResult[]
@@ -15,6 +25,8 @@ export interface AppState {
     // Filters
     profile: 'daylight' | 'event_indoor' | 'outdoor_portrait' | 'night'
     showUnusable: boolean
+    sortOption: SortOption
+    filterOption: FilterOption
     
     // Params
     config: {

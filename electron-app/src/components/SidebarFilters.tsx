@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
-import { Alert, Button, Select, Divider, Switch, Typography } from 'antd'
-import { FolderOpenOutlined } from '@ant-design/icons'
+import { Alert, Button, Select, Divider, Switch, Typography, Slider, Radio } from 'antd'
+import { FolderOpenOutlined, SortAscendingOutlined, SortDescendingOutlined } from '@ant-design/icons'
 import { useStore } from '../store/useStore'
 
 const { Title, Text } = Typography
@@ -14,8 +14,18 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
     const { 
         inputDir, profile, setProfile, 
         showUnusable, toggleShowUnusable,
-        photos
+        photos,
+        sortOption, setSortOption,
+        filterOption, setFilterOption,
+        config, updateConfig
     } = useStore()
+
+    const sortOptions = [
+        { label: '文件名', value: 'filename' },
+        { label: '综合评分', value: 'technical_score' },
+        { label: '清晰度', value: 'sharpness.score' },
+        { label: '曝光度', value: 'exposure.score' },
+    ]
 
     const stats = useMemo(() => {
         const total = photos.length
@@ -28,9 +38,11 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
         let shadowCrushing = 0
         let lowContrast = 0
 
+        const sharpnessThreshold = config?.thresholds?.sharpness ?? 0
+
         for (const p of photos as any[]) {
             if (p?.is_unusable) unusable += 1
-            if (p?.sharpness?.is_blurry) blurry += 1
+            if (typeof p?.sharpness?.score === 'number' && p.sharpness.score < sharpnessThreshold) blurry += 1
             if (typeof p?.exposure?.score === 'number' && p.exposure.score < 90) exposureLowScore += 1
 
             const flags = Array.isArray(p?.exposure?.flags)
@@ -55,7 +67,7 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
             shadowCrushing,
             lowContrast,
         }
-    }, [photos])
+    }, [photos, config?.thresholds?.sharpness])
 
     const presets = [
         { label: '通用 (默认)', value: 'daylight' },
@@ -110,8 +122,81 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
             <div className="app-panel p-3 flex flex-col gap-2">
                 <Title level={5} className="app-section-title m-0">过滤筛选</Title>
                 <div className="flex justify-between items-center">
-                    <Text className="!text-text">显示不可用照片</Text>
-                    <Switch checked={showUnusable} onChange={toggleShowUnusable} />
+                    <Text className="!text-text text-xs">显示不可用</Text>
+                    <Switch size="small" checked={showUnusable} onChange={toggleShowUnusable} />
+                </div>
+                
+                <div className="mt-2">
+                    <div className="flex justify-between items-center mb-1">
+                        <Text className="!text-text text-xs">最低评分</Text>
+                        <Text className="text-xs text-secondary">{filterOption?.minScore ?? 0}</Text>
+                    </div>
+                    <Slider 
+                        min={0} max={100} step={5} 
+                        value={filterOption?.minScore ?? 0} 
+                        onChange={(v) => setFilterOption({ minScore: v })}
+                    />
+                </div>
+
+                <div className="mt-2">
+                    <div className="flex justify-between items-center mb-1">
+                        <Text className="!text-text text-xs">模糊筛选</Text>
+                        <Text className="text-xs text-secondary">
+                            {filterOption?.blurryMode === 'only' ? '仅模糊' : filterOption?.blurryMode === 'exclude' ? '排除模糊' : '全部'}
+                        </Text>
+                    </div>
+                    <Radio.Group
+                        size="small"
+                        value={filterOption?.blurryMode ?? 'all'}
+                        onChange={(e) => setFilterOption({ blurryMode: e.target.value })}
+                        buttonStyle="solid"
+                    >
+                        <Radio.Button value="all">全部</Radio.Button>
+                        <Radio.Button value="exclude">排除模糊</Radio.Button>
+                        <Radio.Button value="only">仅模糊</Radio.Button>
+                    </Radio.Group>
+                </div>
+
+                <div className="mt-2">
+                    <div className="flex justify-between items-center mb-1">
+                        <Text className="!text-text text-xs">模糊阈值 (清晰度)</Text>
+                        <Text className="text-xs text-secondary">{config?.thresholds?.sharpness ?? 0}</Text>
+                    </div>
+                    <Slider
+                        min={0}
+                        max={300}
+                        step={5}
+                        value={config?.thresholds?.sharpness ?? 0}
+                        onChange={(v) =>
+                            updateConfig({
+                                thresholds: { ...config.thresholds, sharpness: v },
+                            })
+                        }
+                    />
+                </div>
+            </div>
+
+            <Divider className="bg-secondary my-2" />
+
+            <div className="app-panel p-3 flex flex-col gap-2">
+                <Title level={5} className="app-section-title m-0">排序</Title>
+                <div className="flex gap-2">
+                    <Select
+                        className="flex-1"
+                        size="small"
+                        value={sortOption.field}
+                        onChange={(v) => setSortOption({ ...sortOption, field: v })}
+                        options={sortOptions}
+                    />
+                    <Radio.Group 
+                        size="small" 
+                        value={sortOption.order} 
+                        onChange={(e) => setSortOption({ ...sortOption, order: e.target.value })}
+                        buttonStyle="solid"
+                    >
+                        <Radio.Button value="asc"><SortAscendingOutlined /></Radio.Button>
+                        <Radio.Button value="desc"><SortDescendingOutlined /></Radio.Button>
+                    </Radio.Group>
                 </div>
             </div>
             

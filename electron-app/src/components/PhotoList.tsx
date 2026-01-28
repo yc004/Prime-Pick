@@ -131,15 +131,59 @@ const PhotoList: React.FC<Props> = ({ isElectron }) => {
     selectRange,
     clearSelection,
     selectAll,
+    sortOption,
+    filterOption,
+    config,
   } = useStore()
 
   const [keyword, setKeyword] = useState('')
   const [lastClicked, setLastClicked] = useState<string | null>(null)
 
   const filteredPhotos = useMemo(() => {
-    if (showUnusable) return photos
-    return photos.filter((p) => !p.is_unusable)
-  }, [photos, showUnusable])
+    // 1. Filter Unusable
+    let res = showUnusable ? photos : photos.filter((p) => !p.is_unusable)
+    
+    // 2. Filter Min Score
+    if (filterOption?.minScore > 0) {
+        res = res.filter(p => p.technical_score >= filterOption.minScore)
+    }
+
+    // 3. Filter Blurry
+    const sharpnessThreshold = config?.thresholds?.sharpness ?? 0
+    const blurryMode = filterOption?.blurryMode ?? 'all'
+    if (blurryMode !== 'all') {
+        res = res.filter((p) => {
+            const sharpnessScore = typeof (p as any)?.sharpness?.score === 'number' ? (p as any).sharpness.score : 0
+            const isBlurry = sharpnessScore < sharpnessThreshold
+            return blurryMode === 'only' ? isBlurry : !isBlurry
+        })
+    }
+
+    // 4. Sort
+    const sortField = sortOption?.field || 'filename'
+    const sortOrder = sortOption?.order || 'asc'
+
+    res = [...res].sort((a, b) => {
+        let valA: any = a
+        let valB: any = b
+        
+        // Handle nested fields like sharpness.score
+        if (sortField.includes('.')) {
+            const parts = sortField.split('.')
+            valA = parts.reduce((obj: any, key: string) => obj?.[key], a) ?? 0
+            valB = parts.reduce((obj: any, key: string) => obj?.[key], b) ?? 0
+        } else {
+            valA = (a as any)[sortField] ?? (sortField === 'filename' ? '' : 0)
+            valB = (b as any)[sortField] ?? (sortField === 'filename' ? '' : 0)
+        }
+
+        if (valA < valB) return sortOrder === 'asc' ? -1 : 1
+        if (valA > valB) return sortOrder === 'asc' ? 1 : -1
+        return 0
+    })
+
+    return res
+  }, [photos, showUnusable, sortOption, filterOption, config?.thresholds?.sharpness])
 
   const visiblePhotos = useMemo(() => {
     const q = keyword.trim().toLowerCase()
@@ -161,7 +205,7 @@ const PhotoList: React.FC<Props> = ({ isElectron }) => {
   const getImgSrc = (filename: string) => {
     if (!isElectron) return undefined
     if (!filename) return undefined
-    return `media://${encodeURIComponent(filename)}`
+    return `media://local/${encodeURIComponent(filename)}`
   }
 
   if (!List) {

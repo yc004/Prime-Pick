@@ -10,19 +10,79 @@ from photo_selector.config import default_config
 from photo_selector.pipeline.models import MetricsResult, SharpnessResult, ExposureResult
 from photo_selector.io.image_reader import read_and_resize
 from photo_selector.metrics.sharpness import compute_sharpness
-from photo_selector.metrics.exposure import compute_exposure
+from photo_selector.metrics.exposure import compute_exposure, score_exposure_from_stats
 from photo_selector.io.cache_sqlite import CacheSQLite
 from photo_selector.io.results_writer import write_results
 
 logger = logging.getLogger(__name__)
 
+def score_result(sharpness_res: SharpnessResult, exposure_res: ExposureResult):
+    sharpness_norm = min((sharpness_res.score / default_config.SHARPNESS_THRESHOLD), 2.0)
+    sharpness_contrib = sharpness_norm * 50
+    exposure_contrib = exposure_res.score
+
+    final_score = (
+        sharpness_contrib * default_config.WEIGHT_SHARPNESS +
+        exposure_contrib * default_config.WEIGHT_EXPOSURE
+    )
+
+    reasons: List[str] = []
+    if sharpness_res.is_blurry:
+        reasons.append("Blurry")
+    reasons.extend(exposure_res.flags)
+
+    is_unusable = False
+
+    if sharpness_res.is_blurry:
+        final_score = min(final_score, 25.0)
+
+    if "underexposed" in reasons or "overexposed" in reasons:
+        final_score = min(final_score, 55.0)
+
+    if "Read Error" in reasons or "Exception" in reasons:
+        final_score = 0
+        is_unusable = True
+
+    if final_score < 30:
+        is_unusable = True
+        if "Low Score" not in reasons:
+            reasons.append("Low Score")
+
+    return float(final_score), is_unusable, reasons
+
+def rescore_cached_result(res: MetricsResult) -> MetricsResult:
+    if res.sharpness:
+        res.sharpness.is_blurry = bool(res.sharpness.score < default_config.SHARPNESS_THRESHOLD)
+
+    if res.exposure:
+        score, flags = score_exposure_from_stats(
+            int(res.exposure.p50),
+            float(res.exposure.white_ratio),
+            float(res.exposure.black_ratio),
+            int(res.exposure.dynamic_range),
+        )
+        res.exposure.score = score
+        res.exposure.flags = flags
+
+    if res.sharpness and res.exposure:
+        final_score, is_unusable, reasons = score_result(res.sharpness, res.exposure)
+        res.technical_score = final_score
+        res.is_unusable = is_unusable
+        res.reasons = reasons
+    else:
+        res.technical_score = 0.0
+        res.is_unusable = True
+        res.reasons = ["Read Error"]
+
+    return res
+
 def process_image(file_path: str) -> MetricsResult:
     """
-    Worker function to process a single image.
-    Must be top-level for pickling.
+    处理单张图像的工作函数。
+    必须是顶层函数以便进行 pickle 序列化。
     """
     try:
-        # 1. Read Image (Downsampled)
+        # 1. 读取图像（降采样）
         img = read_and_resize(file_path, default_config.DEFAULT_LONG_EDGE)
         
         if img is None:
@@ -32,57 +92,12 @@ def process_image(file_path: str) -> MetricsResult:
                 reasons=["Read Error"]
             )
             
-        # 2. Compute Metrics
+        # 2. 计算指标
         sharpness_res = compute_sharpness(img)
         exposure_res = compute_exposure(img)
-        
-        # 3. Calculate Technical Score
-        # Normalize sharpness: if score == threshold -> 60 pts (Passing grade)
-        # Cap at 2.0x threshold -> 100 pts?
-        # Let's adjust:
-        # threshold = 100. score 100 -> 60pts. score 0 -> 0pts. score 200 -> 100pts.
-        # Formula: (score / threshold) * 60. Max 100.
-        sharpness_norm = min((sharpness_res.score / default_config.SHARPNESS_THRESHOLD), 2.0)
-        sharpness_contrib = sharpness_norm * 50 # Base contribution (0-100)
-        
-        exposure_contrib = exposure_res.score # 0-100
-        
-        final_score = (
-            sharpness_contrib * default_config.WEIGHT_SHARPNESS + 
-            exposure_contrib * default_config.WEIGHT_EXPOSURE
-        )
-        
-        # Flags
-        reasons = []
-        if sharpness_res.is_blurry:
-            reasons.append("Blurry")
-        reasons.extend(exposure_res.flags)
-        
-        is_unusable = False
-        
-        # --- PENALTY SYSTEM ---
-        # Strictly penalize problems to ensure they don't get high ratings
-        
-        if sharpness_res.is_blurry:
-            # If blurry, cap the score significantly.
-            # A blurry photo should rarely be above 2 stars (40 pts)
-            # FORCE LOW SCORE to ensure it is marked as unusable (<30)
-            final_score = min(final_score, 25.0)
-            
-        if "underexposed" in reasons or "overexposed" in reasons:
-            # Major exposure issues, cap at 3 stars (60 pts)
-            final_score = min(final_score, 55.0)
-            
-        if "Read Error" in reasons or "Exception" in reasons:
-            final_score = 0
-            is_unusable = True
-            
-        # Define unusable condition
-        if final_score < 30:
-            is_unusable = True
-            if "Low Score" not in reasons:
-                reasons.append("Low Score")
-            
+
+        final_score, is_unusable, reasons = score_result(sharpness_res, exposure_res)
+
         return MetricsResult(
             filename=file_path,
             sharpness=sharpness_res,
@@ -110,24 +125,24 @@ def run_stage1(
     
     start_time = time.time()
     
-    # 1. Discovery
-    # Support jpg, jpeg, JPG, JPEG
+    # 1. 发现文件
+    # 支持 jpg, jpeg, JPG, JPEG
     extensions = ['*.jpg', '*.JPG', '*.jpeg', '*.JPEG']
     files = []
     for ext in extensions:
         files.extend(glob.glob(os.path.join(input_dir, ext)))
     
-    files = sorted(list(set(files))) # Remove duplicates if any
+    files = sorted(list(set(files))) # 移除重复项（如果有）
     total_files = len(files)
     logger.info(f"Found {total_files} images in {input_dir}")
     
     if total_files == 0:
         return []
         
-    # 2. Cache Init
+    # 2. 缓存初始化
     cache = CacheSQLite()
     
-    # 3. Cache Check & Task Distribution
+    # 3. 缓存检查与任务分配
     tasks = [] # (file_path, signature)
     results = []
     
@@ -141,36 +156,37 @@ def run_stage1(
             cached_data = cache.get(signature)
             
         if cached_data:
-            # Cache Hit
+            # 缓存命中
             try:
                 res = MetricsResult.from_dict(cached_data)
-                # Ensure filename matches (it should, but signature includes path)
+                # 确保文件名匹配（应该匹配，但签名包含路径）
                 if res.filename != fpath:
                     res.filename = fpath
+                res = rescore_cached_result(res)
                 results.append(res)
                 hits += 1
             except Exception as e:
                 logger.warning(f"Cache data corrupted for {fpath}, recomputing.")
                 tasks.append((fpath, signature))
         else:
-            # Cache Miss
+            # 缓存未命中
             tasks.append((fpath, signature))
             
     logger.info(f"Cache hits: {hits}/{total_files}. Tasks to run: {len(tasks)}")
     
-    # 4. Parallel Execution
+    # 4. 并行执行
     if tasks:
         with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
-            # Map tasks
-            # We need to map only file paths
+            # 映射任务
+            # 我们只需要映射文件路径
             task_paths = [t[0] for t in tasks]
             task_signatures = [t[1] for t in tasks]
             
-            # Submit
-            # We use map for simplicity, or submit for order control. Map is fine.
-            # process_image is pure.
+            # 提交
+            # 我们使用 map 是为了简单，或者使用 submit 来控制顺序。Map 也可以。
+            # process_image 是纯函数。
             
-            # Show progress?
+            # 显示进度？
             logger.info(f"Starting execution with {workers} workers...")
             
             futures = {executor.submit(process_image, p): (p, sig) for p, sig in zip(task_paths, task_signatures)}
@@ -182,8 +198,8 @@ def run_stage1(
                     res = future.result()
                     results.append(res)
                     
-                    # Write to cache
-                    # Note: Writing to sqlite from main process is safe
+                    # 写入缓存
+                    # 注意：从主进程写入 sqlite 是安全的
                     cache.put(sig, res.to_dict())
                     
                 except Exception as e:
@@ -196,7 +212,7 @@ def run_stage1(
                 if completed_count % 10 == 0:
                     logger.info(f"Progress: {completed_count}/{len(tasks)}")
 
-    # 5. Output
+    # 5. 输出
     write_results(results, output_csv)
     cache.close()
     

@@ -14,5 +14,8 @@ interface Window {
     onComputeDone: (callback: (code: number) => void) => () => void
     onWriteXmpProgress: (callback: (data: any) => void) => () => void
     onWriteXmpDone: (callback: (code: number) => void) => () => void
+    onError: (callback: (error: { title: string; content: string }) => void) => () => void
+    logInfo: (message: string) => void
+    logError: (message: string) => void
   }
 }

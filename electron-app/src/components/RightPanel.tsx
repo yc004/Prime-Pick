@@ -19,7 +19,7 @@ const RightPanel: React.FC<Props> = ({ isElectron }) => {
     const previewSrc = useMemo(() => {
         if (!isElectron) return undefined
         if (!selectedPhoto?.filename) return undefined
-        return `media://${encodeURIComponent(selectedPhoto.filename)}`
+        return `media://local/${encodeURIComponent(selectedPhoto.filename)}`
     }, [isElectron, selectedPhoto?.filename])
     const [imgOk, setImgOk] = useState(true)
     useEffect(() => {

@@ -6,20 +6,18 @@ from photo_selector.config import default_config
 
 def compute_sharpness(img: np.ndarray) -> SharpnessResult:
     """
-    Compute sharpness using a Grid-Based Laplacian Variance method.
-    This approach is robust against bokeh/shallow depth-of-field by focusing
-    on the sharpest regions (Top-K blocks) rather than the global average.
+    使用基于网格的拉普拉斯方差方法计算清晰度。
+    通过关注最清晰的区域（前 K 个块）而不是全局平均值，该方法对散景/浅景深具有鲁棒性。
     
-    Input img should be BGR (will be converted to Gray) or Gray.
+    输入图像应为 BGR（将转换为灰度）或灰度图。
     """
     if len(img.shape) == 3:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     else:
         gray = img
         
-    # Resize if too large to speed up and reduce high-ISO noise sensitivity
-    # Maintaining aspect ratio is not strictly necessary for variance calc, 
-    # but let's keep it simple. If we resize to a fixed width, thresholds are more stable.
+    # 如果图像过大则进行缩放，以提高速度并降低高 ISO 噪点敏感度
+    # 保持纵横比对于方差计算并非严格必要，但为了简单起见，我们保持纵横比。如果调整为固定宽度，阈值会更稳定。
     target_width = 1024
     h, w = gray.shape
     if w > target_width:
@@ -29,12 +27,12 @@ def compute_sharpness(img: np.ndarray) -> SharpnessResult:
         
     h, w = gray.shape
     
-    # Grid parameters
+    # 网格参数
     rows = 4
     cols = 4
     
-    # Calculate block dimensions
-    # We use a simple sliding window or just fixed grid. Fixed grid is faster.
+    # 计算块尺寸
+    # 我们使用简单的滑动窗口或固定网格。固定网格更快。
     step_h = h // rows
     step_w = w // cols
     
@@ -42,7 +40,7 @@ def compute_sharpness(img: np.ndarray) -> SharpnessResult:
     
     for r in range(rows):
         for c in range(cols):
-            # Extract ROI
+            # 提取感兴趣区域 (ROI)
             y_start = r * step_h
             y_end = (r + 1) * step_h
             x_start = c * step_w
@@ -50,12 +48,12 @@ def compute_sharpness(img: np.ndarray) -> SharpnessResult:
             
             roi = gray[y_start:y_end, x_start:x_end]
             
-            # Skip empty or very small ROIs (edge cases)
+            # 跳过空或非常小的 ROI（边缘情况）
             if roi.size == 0:
                 continue
                 
-            # Compute Laplacian Variance for this block
-            # cv2.CV_64F is needed to avoid overflow/underflow
+            # 计算该块的拉普拉斯方差
+            # 需要使用 cv2.CV_64F 以避免上溢/下溢
             laplacian = cv2.Laplacian(roi, cv2.CV_64F)
             score = laplacian.var()
             block_scores.append(score)
@@ -63,25 +61,23 @@ def compute_sharpness(img: np.ndarray) -> SharpnessResult:
     if not block_scores:
         return SharpnessResult(score=0.0, is_blurry=True)
         
-    # Sort scores descending
+    # 按降序对分数进行排序
     block_scores.sort(reverse=True)
     
-    # Strategy: Take the Top K blocks
-    # e.g., if we have 16 blocks, maybe take top 4 (25% of image)
-    # This assumes at least 25% of the image should be in focus for it to be "sharp"
-    # For portraits, this is usually true (face/eyes).
+    # 策略：取前 K 个块
+    # 例如，如果有 16 个块，可能取前 4 个（图像的 25%）
+    # 这假设图像中至少有 25% 的区域应该聚焦清晰
+    # 对于人像摄影，这通常是正确的（脸/眼睛）。
     top_k = 4
     valid_scores = block_scores[:top_k]
     
-    # Final score is the average of the top K blocks
-    # This prevents one single noisy artifact block from skewing the result (max),
-    # while ignoring the blurry background (mean).
+    # 最终得分是前 K 个块的平均值
+    # 这可以防止单个噪点块歪曲结果（如使用最大值时），同时忽略模糊的背景（如使用平均值时）。
     final_score = float(np.mean(valid_scores))
     
-    # The threshold in config might need adjustment because block variances 
-    # can be higher than global variance.
-    # However, since we resized to 1024 width, the variance values drop compared to full res.
-    # Let's assume the user will tune the threshold in config.
+    # 配置中的阈值可能需要调整，因为块方差可能高于全局方差。
+    # 但是，由于我们将宽度调整为 1024，方差值与全分辨率相比会下降。
+    # 我们假设用户会在配置中调整阈值。
     is_blurry = bool(final_score < default_config.SHARPNESS_THRESHOLD)
     
     return SharpnessResult(score=final_score, is_blurry=is_blurry)

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { message } from 'antd'
+import { message, Modal } from 'antd'
 import SidebarFilters from './components/SidebarFilters'
 import PhotoList from './components/PhotoList'
 import RightPanel from './components/RightPanel'
@@ -68,6 +68,26 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!window.electronAPI) return
 
+    // Global Error Listeners
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+        console.error("Unhandled Rejection:", event.reason)
+        Modal.error({
+            title: '操作失败',
+            content: `发生未知错误: ${event.reason?.message || event.reason || 'Unknown error'}`,
+        })
+    }
+
+    const handleGlobalError = (event: ErrorEvent) => {
+        console.error("Global Error:", event.error)
+        Modal.error({
+            title: '程序错误',
+            content: `发生错误: ${event.message}`,
+        })
+    }
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+    window.addEventListener('error', handleGlobalError)
+
     // Listeners
     const offProgress = window.electronAPI.onComputeProgress((data) => {
        if (data.type === 'progress') {
@@ -98,11 +118,21 @@ const App: React.FC = () => {
         else message.error('XMP 写入失败')
     })
     
+    const offError = window.electronAPI.onError((error) => {
+        Modal.error({
+            title: error.title,
+            content: error.content,
+        })
+    })
+
     return () => {
+        window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+        window.removeEventListener('error', handleGlobalError)
         offProgress()
         offDone()
         offXmpProgress()
         offXmpDone()
+        offError()
     }
   }, [inputDir, setPhotos, setComputing, setProgress])
 

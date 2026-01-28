@@ -20,6 +20,13 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     return { hasError: true, error }
   }
 
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('ErrorBoundary caught error:', error, errorInfo)
+    if (window.electronAPI) {
+        window.electronAPI.logError(`ErrorBoundary: ${error.message}\n${errorInfo.componentStack}`)
+    }
+  }
+
   render() {
     if (!this.state.hasError) return this.props.children
 

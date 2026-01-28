@@ -3,6 +3,12 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { spawn, ChildProcess } from 'child_process'
 import fs from 'fs'
+import log from 'electron-log/main'
+
+// Initialize logger
+log.initialize()
+log.errorHandler.startCatching()
+log.info('Application starting...')
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -144,6 +150,12 @@ function createWindow() {
   }
 }
 
+function sendError(title: string, content: string) {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('app-error', { title, content })
+  }
+}
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
@@ -160,10 +172,32 @@ app.on('activate', () => {
 app.whenReady().then(() => {
     protocol.registerFileProtocol('media', (request, callback) => {
       try {
-        const url = request.url.replace(/^media:\/\//, '')
+        let url = request.url
+        log.info('Media request raw:', url)
+        
+        // Handle "media://local/" format (preferred) and "media://" (fallback)
+        if (url.startsWith('media://local/')) {
+            url = url.replace(/^media:\/\/local\//, '')
+        } else {
+            url = url.replace(/^media:\/\//, '')
+        }
+
         const decoded = decodeURIComponent(url)
-        callback({ path: decoded })
+        let filePath = decoded
+
+        // Fix Windows paths: 
+        // 1. If path starts with slash like "/C:/Users/...", remove leading slash
+        // 2. But don't remove if it's a UNC path (starts with //)
+        if (process.platform === 'win32') {
+            if (filePath.startsWith('/') && !filePath.startsWith('//') && /^\/[a-zA-Z]:/.test(filePath)) {
+                filePath = filePath.slice(1)
+            }
+        }
+        
+        // log.info('Decoded path:', filePath)
+        callback({ path: filePath })
       } catch (e) {
+        log.error('Media protocol error:', e)
         callback({ error: -324 })
       }
     })
@@ -190,7 +224,7 @@ function setupIpc() {
                 if (Array.isArray(parsed)) return parsed.map(normalizeMetricsRecord)
                 return parsed
             } catch (e) {
-                console.error("Failed to read results.json", e)
+                log.error("Failed to read results.json", e)
                 return null
             }
         }
@@ -201,7 +235,7 @@ function setupIpc() {
             const parsed = parseCsv(data)
             return parsed.map(normalizeMetricsRecord)
           } catch (e) {
-            console.error("Failed to read results.csv", e)
+            log.error("Failed to read results.csv", e)
             return null
           }
         }
@@ -223,7 +257,7 @@ function setupIpc() {
         const projectRoot = path.resolve(__dirname, '../../') 
         const scriptPath = path.join(projectRoot, 'photo_selector/cli.py')
         
-        console.log("Spawning python:", scriptPath, "in", projectRoot)
+        log.info("Spawning python:", scriptPath, "in", projectRoot)
 
         const cliArgs = [
             scriptPath,
@@ -248,13 +282,13 @@ function setupIpc() {
                     const json = JSON.parse(line)
                     event.reply('compute-progress', json)
                 } catch (e) {
-                    console.log("Python stdout:", line)
+                    log.info("Python stdout:", line)
                 }
             }
         })
 
         pythonProcess.stderr?.on('data', (data) => {
-            console.error(`Python stderr: ${data}`)
+            log.error(`Python stderr: ${data}`)
         })
 
         pythonProcess.on('close', (code) => {
@@ -290,6 +324,8 @@ function setupIpc() {
         ]
         if (onlySelected) cliArgs.push('--only-selected')
         
+        log.info("Starting write-xmp:", scriptPath)
+
         const child = spawn('python', cliArgs, {
             cwd: projectRoot,
             env: { ...process.env, PYTHONPATH: projectRoot }
@@ -302,12 +338,30 @@ function setupIpc() {
                  try {
                      const json = JSON.parse(line)
                      event.reply('write-xmp-progress', json)
-                 } catch(e) {}
+                 } catch(e) {
+                     log.info("write-xmp stdout:", line)
+                 }
              }
+        })
+
+        child.stderr?.on('data', (data) => {
+            const msg = data.toString()
+            log.error(`write-xmp stderr: ${msg}`)
+            if (msg.includes("Traceback") || msg.includes("Error:")) {
+                sendError("写入 XMP 错误", msg)
+            }
         })
         
         child.on('close', (code) => {
+            log.info("write-xmp finished with code:", code)
             event.reply('write-xmp-done', code)
+            if (code !== 0) {
+                sendError("写入 XMP 失败", `进程异常退出，退出码: ${code}`)
+            }
         })
     })
+
+    // Logging IPC
+    ipcMain.on('log-info', (_, message) => log.info(message))
+    ipcMain.on('log-error', (_, message) => log.error(message))
 }
