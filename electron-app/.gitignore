@@ -24,5 +24,3 @@ release2
 *.njsproj
 *.sln
 *.sw?
-
-electron-app
