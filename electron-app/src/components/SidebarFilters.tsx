@@ -331,6 +331,32 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
                         />
                     </div>
                     <div>
+                        <Text type="secondary" className="text-xs">时间窗口(秒)</Text>
+                        <InputNumber
+                            size="small"
+                            className="w-full"
+                            min={0}
+                            max={600}
+                            step={1}
+                            value={groupingParams.timeWindowSecs}
+                            onChange={(v) => updateGroupingParams({ timeWindowSecs: Number(v ?? 6) })}
+                        />
+                    </div>
+                    <div>
+                        <Text type="secondary" className="text-xs">时间来源</Text>
+                        <Select
+                            size="small"
+                            className="w-full"
+                            value={groupingParams.timeSource}
+                            onChange={(v) => updateGroupingParams({ timeSource: v })}
+                            options={[
+                                { label: 'Auto(EXIF→mtime)', value: 'auto' },
+                                { label: 'EXIF', value: 'exif' },
+                                { label: 'mtime', value: 'mtime' },
+                            ]}
+                        />
+                    </div>
+                    <div>
                         <Text type="secondary" className="text-xs">TopK</Text>
                         <InputNumber
                             size="small"

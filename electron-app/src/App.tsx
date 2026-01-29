@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect } from 'react'
 import { message, Modal } from 'antd'
-import SidebarFilters from './components/SidebarFilters'
 import PhotoList from './components/PhotoList'
 import RightPanel from './components/RightPanel'
 import GroupedView from './components/GroupedView'
 import ErrorBoundary from './components/ErrorBoundary'
 import TitleBar from './components/TitleBar'
 import TopMenuBar from './components/TopMenuBar'
+import PreferencesPage from './components/PreferencesPage'
 import { useStore } from './store/useStore'
 import { shallow } from 'zustand/shallow'
 
@@ -16,7 +16,6 @@ const App: React.FC = () => {
     setGrouping, setGroupProgress,
     inputDir,
     viewMode,
-    sidebarVisible,
     rightPanelVisible,
   } = useStore(
     (s) => ({
@@ -29,13 +28,13 @@ const App: React.FC = () => {
       setGroupProgress: s.setGroupProgress,
       inputDir: s.inputDir,
       viewMode: s.viewMode,
-      sidebarVisible: s.sidebarVisible,
       rightPanelVisible: s.rightPanelVisible,
     }),
     shallow,
   )
 
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+  const isPreferencesWindow = typeof window !== 'undefined' && window.location.hash === '#/preferences'
 
   const normalizeResults = (results: any): any[] => {
     if (!Array.isArray(results)) return []
@@ -246,14 +245,14 @@ const App: React.FC = () => {
         state.setViewMode('grouped')
         return
       }
-      if (key === 'b') {
-        e.preventDefault()
-        state.toggleSidebarVisible()
-        return
-      }
       if (key === 'i') {
         e.preventDefault()
         state.toggleRightPanelVisible()
+        return
+      }
+      if (key === ',') {
+        e.preventDefault()
+        window.electronAPI?.openPreferencesWindow?.()
         return
       }
       if (key === 'enter') {
@@ -299,34 +298,27 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <div className="h-screen flex flex-col bg-background overflow-hidden" style={{ backgroundColor: '#020617', color: '#fff' }}>
-        <TitleBar title={isElectron ? "Prime Pick" : "Prime Pick (Web Mode)"} />
-        <TopMenuBar isElectron={isElectron} onSelectDir={handleSelectDir} onReloadResults={handleReloadResults} />
+        <TitleBar title={isPreferencesWindow ? '偏好设置' : isElectron ? 'Prime Pick' : 'Prime Pick (Web Mode)'} />
+        {!isPreferencesWindow && (
+          <TopMenuBar isElectron={isElectron} onSelectDir={handleSelectDir} onReloadResults={handleReloadResults} />
+        )}
         <div className="flex-1 overflow-hidden p-3">
           {!isElectron && (
              <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-red-500/20 text-red-200 px-4 py-2 rounded z-50 pointer-events-none">
                 Warning: Electron API not detected.
              </div>
           )}
+          {isPreferencesWindow ? (
+            <div className="h-full app-panel overflow-hidden">
+              <PreferencesPage />
+            </div>
+          ) : (
           <div
             className={[
               'h-full grid gap-3',
-              sidebarVisible && rightPanelVisible
-                ? 'grid-cols-[280px_1fr_380px]'
-                : sidebarVisible
-                  ? 'grid-cols-[280px_1fr]'
-                  : rightPanelVisible
-                    ? 'grid-cols-[1fr_380px]'
-                    : 'grid-cols-[1fr]',
+              rightPanelVisible ? 'grid-cols-[1fr_380px]' : 'grid-cols-[1fr]',
             ].join(' ')}
           >
-            {sidebarVisible && (
-              <div className="app-panel overflow-hidden">
-                <div className="h-full overflow-y-auto">
-                  <SidebarFilters onSelectDir={handleSelectDir} isElectron={isElectron} />
-                </div>
-              </div>
-            )}
-
             <div className="app-panel overflow-hidden">
               {viewMode === 'grouped' ? <GroupedView isElectron={isElectron} /> : <PhotoList isElectron={isElectron} />}
             </div>
@@ -337,6 +329,7 @@ const App: React.FC = () => {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
     </ErrorBoundary>

@@ -1,0 +1,67 @@
+name: CI Build
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache electron-builder
+        uses: actions/cache@v4
+        with:
+          path: .cache/electron-builder
+          key: ${{ runner.os }}-electron-builder-${{ hashFiles('electron-app/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-builder-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-engine.txt
+
+      - name: Install Python deps
+        run: python -m pip install --upgrade pip && pip install -r requirements-engine.txt
+
+      - name: Build Python engine (PyInstaller)
+        run: python scripts/build_engine.py --clean
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: electron-app/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: electron-app
+        run: npm ci
+
+      - name: Package Electron app
+        working-directory: electron-app
+        run: npm run dist -- --publish never
+
+      - name: Upload packaged artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: prime-pick-${{ matrix.os }}
+          path: electron-app/release2/**
+          if-no-files-found: error

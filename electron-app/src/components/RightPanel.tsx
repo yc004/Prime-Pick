@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Typography, Slider, InputNumber, Button, Divider, Progress, Tag, Switch } from 'antd'
+import { Button, Tag, Typography } from 'antd'
 import { useStore } from '../store/useStore'
 import { shallow } from 'zustand/shallow'
 
@@ -11,20 +11,13 @@ interface Props {
 
 const RightPanel: React.FC<Props> = ({ isElectron }) => {
     const { 
-        selectedPhotos, photos, config, updateConfig, 
-        computing, progress, inputDir, profile, rebuildCache, setRebuildCache
+        selectedPhotos, photos, config, inputDir
     } = useStore(
         (s) => ({
             selectedPhotos: s.selectedPhotos,
             photos: s.photos,
             config: s.config,
-            updateConfig: s.updateConfig,
-            computing: s.computing,
-            progress: s.progress,
             inputDir: s.inputDir,
-            profile: s.profile,
-            rebuildCache: s.rebuildCache,
-            setRebuildCache: s.setRebuildCache,
         }),
         shallow,
     )
@@ -49,17 +42,6 @@ const RightPanel: React.FC<Props> = ({ isElectron }) => {
         if (selectedPhoto.technical_score >= 40) return { rating: 3, label: null }
         return { rating: 2, label: null }
     }, [selectedPhoto])
-    
-    const handleCompute = () => {
-        if (!inputDir || !window.electronAPI) return
-        window.electronAPI.startCompute({
-            inputDir,
-            profile,
-            config: config,
-            rebuildCache
-        })
-        useStore.getState().setComputing(true)
-    }
 
     const handleWriteXmp = (onlySelected: boolean) => {
         if (!inputDir || !window.electronAPI) return
@@ -131,83 +113,21 @@ const RightPanel: React.FC<Props> = ({ isElectron }) => {
             )}
             
             <div className="p-4 flex-1 overflow-y-auto">
-                <Title level={5} className="!text-text">参数设置</Title>
-                
-                <div className="mb-4">
-                    <Text className="!text-text text-xs">清晰度权重</Text>
-                    <div className="flex gap-2 items-center">
-                        <Slider 
-                            min={0} max={5} step={0.1} 
-                            value={config.weights.sharpness}
-                            onChange={(v) => updateConfig({ weights: { ...config.weights, sharpness: v } })}
-                            className="flex-1"
-                        />
-                        <InputNumber 
-                            size="small" min={0} max={5} step={0.1}
-                            value={config.weights.sharpness}
-                            onChange={(v) => updateConfig({ weights: { ...config.weights, sharpness: v || 0 } })}
-                            className="w-16"
-                        />
-                    </div>
-                </div>
-
-                <div className="mb-4">
-                    <Text className="!text-text text-xs">曝光权重</Text>
-                    <div className="flex gap-2 items-center">
-                        <Slider 
-                            min={0} max={5} step={0.1} 
-                            value={config.weights.exposure}
-                            onChange={(v) => updateConfig({ weights: { ...config.weights, exposure: v } })}
-                            className="flex-1"
-                        />
-                        <InputNumber 
-                            size="small" min={0} max={5} step={0.1}
-                            value={config.weights.exposure}
-                            onChange={(v) => updateConfig({ weights: { ...config.weights, exposure: v || 0 } })}
-                            className="w-16"
-                        />
-                    </div>
-                </div>
-                
-                <div className="mb-4">
-                    <Text className="!text-text text-xs">清晰度阈值</Text>
-                    <div className="flex gap-2 items-center">
-                        <Slider 
-                            min={0} max={100} step={1} 
-                            value={config.thresholds.sharpness}
-                            onChange={(v) => updateConfig({ thresholds: { ...config.thresholds, sharpness: v } })}
-                            className="flex-1"
-                        />
-                        <InputNumber 
-                            size="small" min={0} max={100} step={1}
-                            value={config.thresholds.sharpness}
-                            onChange={(v) => updateConfig({ thresholds: { ...config.thresholds, sharpness: v || 0 } })}
-                            className="w-16"
-                        />
-                    </div>
-                </div>
-                
-                <Divider className="bg-secondary" />
-                
+                <Title level={5} className="!text-text">操作</Title>
                 <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                        <Text type="secondary" className="text-xs">忽略缓存（重新计算）</Text>
-                        <Switch checked={rebuildCache} onChange={setRebuildCache} />
-                    </div>
-                    <Button type="primary" onClick={handleCompute} loading={computing} disabled={!inputDir || !isElectron}>
-                        {computing ? '计算中...' : '应用并重算全部'}
-                    </Button>
-                    {progress && (
-                        <Progress percent={Math.round((progress.done / progress.total) * 100)} size="small" />
-                    )}
-                    
-                    <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div className="grid grid-cols-2 gap-2">
                         <Button onClick={() => handleWriteXmp(true)} disabled={selectedPhotos.size === 0 || !isElectron}>
                             写入 XMP (选中)
                         </Button>
                         <Button onClick={() => handleWriteXmp(false)} disabled={!inputDir || !isElectron}>
                             写入 XMP (全部)
                         </Button>
+                    </div>
+                    <Button type="primary" onClick={() => window.electronAPI?.openPreferencesWindow?.()}>
+                        打开偏好设置（参数/筛选）
+                    </Button>
+                    <div className="text-xs text-slate-400">
+                        评分、筛选、排序、分组参数已迁移到“偏好设置”。
                     </div>
                 </div>
 

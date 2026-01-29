@@ -11,11 +11,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startGroup: (args: any) => ipcRenderer.send('start-group', args),
   cancelGroup: () => ipcRenderer.send('cancel-group'),
   writeXmp: (args: any) => ipcRenderer.send('write-xmp', args),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   
   // Window controls
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
+  openPreferencesWindow: () => ipcRenderer.send('open-preferences-window'),
   
   onComputeProgress: (callback: (data: any) => void) => {
       const handler = (_: any, data: any) => callback(data)

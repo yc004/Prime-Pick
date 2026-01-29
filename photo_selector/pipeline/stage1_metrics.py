@@ -13,6 +13,7 @@ from photo_selector.metrics.sharpness import compute_sharpness
 from photo_selector.metrics.exposure import compute_exposure, score_exposure_from_stats
 from photo_selector.io.cache_sqlite import CacheSQLite
 from photo_selector.io.results_writer import write_results
+from photo_selector.io.photo_time import get_capture_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +83,14 @@ def process_image(file_path: str) -> MetricsResult:
     必须是顶层函数以便进行 pickle 序列化。
     """
     try:
+        capture_ts = get_capture_timestamp(file_path, source="auto")
         # 1. 读取图像（降采样）
         img = read_and_resize(file_path, default_config.DEFAULT_LONG_EDGE)
         
         if img is None:
             return MetricsResult(
                 filename=file_path, 
+                capture_ts=capture_ts,
                 is_unusable=True, 
                 reasons=["Read Error"]
             )
@@ -102,6 +105,7 @@ def process_image(file_path: str) -> MetricsResult:
             filename=file_path,
             sharpness=sharpness_res,
             exposure=exposure_res,
+            capture_ts=capture_ts,
             technical_score=final_score,
             is_unusable=is_unusable,
             reasons=reasons
@@ -111,6 +115,7 @@ def process_image(file_path: str) -> MetricsResult:
         logger.error(f"Error processing {file_path}: {e}")
         return MetricsResult(
             filename=file_path,
+            capture_ts=get_capture_timestamp(file_path, source="auto"),
             is_unusable=True,
             reasons=[f"Exception: {str(e)}"]
         )
@@ -162,6 +167,8 @@ def run_stage1(
                 # 确保文件名匹配（应该匹配，但签名包含路径）
                 if res.filename != fpath:
                     res.filename = fpath
+                if not getattr(res, "capture_ts", 0.0):
+                    res.capture_ts = get_capture_timestamp(fpath, source="auto")
                 res = rescore_cached_result(res)
                 results.append(res)
                 hits += 1

@@ -1,6 +1,61 @@
 import { createWithEqualityFn } from 'zustand/traditional'
 import type { AppState, MetricsResult, GroupsFile } from '../types'
 
+type PersistedPreferences = Pick<
+    AppState,
+    | 'profile'
+    | 'showUnusable'
+    | 'sortOption'
+    | 'filterOption'
+    | 'config'
+    | 'groupingParams'
+    | 'showOnlyGroupBest'
+    | 'rebuildCache'
+    | 'rightPanelVisible'
+>
+
+const PREFERENCES_KEY = 'primepick:preferences:v1'
+
+const loadPreferences = (): Partial<PersistedPreferences> => {
+    if (typeof window === 'undefined') return {}
+    try {
+        const raw = window.localStorage.getItem(PREFERENCES_KEY)
+        if (!raw) return {}
+        const parsed = JSON.parse(raw)
+        if (!parsed || typeof parsed !== 'object') return {}
+        return parsed
+    } catch {
+        return {}
+    }
+}
+
+const persistablePreferences = (s: AppState): PersistedPreferences => ({
+    profile: s.profile,
+    showUnusable: s.showUnusable,
+    sortOption: s.sortOption,
+    filterOption: s.filterOption,
+    config: s.config,
+    groupingParams: s.groupingParams,
+    showOnlyGroupBest: s.showOnlyGroupBest,
+    rebuildCache: s.rebuildCache,
+    rightPanelVisible: s.rightPanelVisible,
+})
+
+const mergeConfig = (base: AppState['config'], incoming?: Partial<AppState['config']>) => {
+    if (!incoming) return base
+    return {
+        ...base,
+        ...incoming,
+        weights: { ...base.weights, ...(incoming as any).weights },
+        thresholds: { ...base.thresholds, ...(incoming as any).thresholds },
+    }
+}
+
+const mergeGroupingParams = (base: AppState['groupingParams'], incoming?: Partial<AppState['groupingParams']>) => {
+    if (!incoming) return base
+    return { ...base, ...incoming }
+}
+
 export interface SortOption {
     field: string
     order: 'asc' | 'desc'
@@ -16,9 +71,7 @@ interface Store extends AppState {
     setPhotos: (photos: MetricsResult[]) => void
     setGroups: (groups: GroupsFile | null) => void
     setViewMode: (mode: AppState['viewMode']) => void
-    setSidebarVisible: (visible: boolean) => void
     setRightPanelVisible: (visible: boolean) => void
-    toggleSidebarVisible: () => void
     toggleRightPanelVisible: () => void
     setSelectedGroupId: (groupId: number | null) => void
     toggleShowOnlyGroupBest: () => void
@@ -41,6 +94,27 @@ interface Store extends AppState {
     filterOption: FilterOption
 }
 
+const persisted = loadPreferences()
+
+const defaultGroupingParams: AppState['groupingParams'] = {
+    embedModel: 'mobilenet_v3_small',
+    thumbLongEdge: 256,
+    eps: 0.12,
+    minSamples: 2,
+    neighborWindow: 80,
+    timeWindowSecs: 6,
+    timeSource: 'auto',
+    topk: 2,
+    workers: 4,
+    batchSize: 32,
+}
+
+const defaultConfig: AppState['config'] = {
+    max_long_edge: 1024,
+    weights: { sharpness: 1.0, exposure: 1.0 },
+    thresholds: { sharpness: 60.0, low_light: 10.0 },
+}
+
 export const useStore = createWithEqualityFn<Store>((set) => ({
     inputDir: null,
     photos: [],
@@ -48,41 +122,25 @@ export const useStore = createWithEqualityFn<Store>((set) => ({
     selectedPhotos: new Set(),
     viewMode: 'all',
     selectedGroupId: null,
-    showOnlyGroupBest: false,
-    groupingParams: {
-        embedModel: 'mobilenet_v3_small',
-        thumbLongEdge: 256,
-        eps: 0.12,
-        minSamples: 2,
-        neighborWindow: 80,
-        topk: 2,
-        workers: 4,
-        batchSize: 32,
-    },
+    showOnlyGroupBest: typeof (persisted as any).showOnlyGroupBest === 'boolean' ? (persisted as any).showOnlyGroupBest : false,
+    groupingParams: mergeGroupingParams(defaultGroupingParams, (persisted as any).groupingParams),
     grouping: false,
     groupProgress: null,
-    profile: 'daylight',
-    showUnusable: true,
-    sortOption: { field: 'filename', order: 'asc' },
-    filterOption: { minScore: 0, blurryMode: 'all' },
-    config: {
-        max_long_edge: 1024,
-        weights: { sharpness: 1.0, exposure: 1.0 },
-        thresholds: { sharpness: 60.0, low_light: 10.0 }
-    },
+    profile: (persisted as any).profile ?? 'daylight',
+    showUnusable: typeof (persisted as any).showUnusable === 'boolean' ? (persisted as any).showUnusable : true,
+    sortOption: (persisted as any).sortOption ?? { field: 'filename', order: 'asc' },
+    filterOption: (persisted as any).filterOption ?? { minScore: 0, blurryMode: 'all' },
+    config: mergeConfig(defaultConfig, (persisted as any).config),
     computing: false,
     progress: null,
-    rebuildCache: false,
-    sidebarVisible: true,
-    rightPanelVisible: true,
+    rebuildCache: typeof (persisted as any).rebuildCache === 'boolean' ? (persisted as any).rebuildCache : false,
+    rightPanelVisible: typeof (persisted as any).rightPanelVisible === 'boolean' ? (persisted as any).rightPanelVisible : true,
 
     setInputDir: (dir) => set({ inputDir: dir }),
     setPhotos: (photos) => set({ photos }),
     setGroups: (groups) => set({ groups }),
     setViewMode: (mode) => set({ viewMode: mode }),
-    setSidebarVisible: (visible) => set({ sidebarVisible: visible }),
     setRightPanelVisible: (visible) => set({ rightPanelVisible: visible }),
-    toggleSidebarVisible: () => set((state) => ({ sidebarVisible: !state.sidebarVisible })),
     toggleRightPanelVisible: () => set((state) => ({ rightPanelVisible: !state.rightPanelVisible })),
     setSelectedGroupId: (groupId) => set({ selectedGroupId: groupId }),
     toggleShowOnlyGroupBest: () => set((state) => ({ showOnlyGroupBest: !state.showOnlyGroupBest })),
@@ -123,3 +181,42 @@ export const useStore = createWithEqualityFn<Store>((set) => ({
     setSortOption: (option) => set({ sortOption: option }),
     setFilterOption: (option) => set((state) => ({ filterOption: { ...state.filterOption, ...option } })),
 }))
+
+if (typeof window !== 'undefined') {
+    let last = window.localStorage.getItem(PREFERENCES_KEY) ?? ''
+
+    useStore.subscribe((state) => {
+        const next = JSON.stringify(persistablePreferences(state))
+        if (next === last) return
+        const existing = window.localStorage.getItem(PREFERENCES_KEY) ?? ''
+        if (existing !== next) window.localStorage.setItem(PREFERENCES_KEY, next)
+        last = next
+    })
+
+    window.addEventListener('storage', (e) => {
+        if (e.key !== PREFERENCES_KEY) return
+        const nv = e.newValue ?? ''
+        if (!nv || nv === last) return
+        last = nv
+        try {
+            const parsed = JSON.parse(nv)
+            if (!parsed || typeof parsed !== 'object') return
+            useStore.setState(
+                (state) => ({
+                    profile: (parsed as any).profile ?? state.profile,
+                    showUnusable: typeof (parsed as any).showUnusable === 'boolean' ? (parsed as any).showUnusable : state.showUnusable,
+                    sortOption: (parsed as any).sortOption ?? state.sortOption,
+                    filterOption: (parsed as any).filterOption ?? state.filterOption,
+                    config: mergeConfig(state.config, (parsed as any).config),
+                    groupingParams: mergeGroupingParams(state.groupingParams, (parsed as any).groupingParams),
+                    showOnlyGroupBest:
+                        typeof (parsed as any).showOnlyGroupBest === 'boolean' ? (parsed as any).showOnlyGroupBest : state.showOnlyGroupBest,
+                    rebuildCache: typeof (parsed as any).rebuildCache === 'boolean' ? (parsed as any).rebuildCache : state.rebuildCache,
+                    rightPanelVisible:
+                        typeof (parsed as any).rightPanelVisible === 'boolean' ? (parsed as any).rightPanelVisible : state.rightPanelVisible,
+                }),
+                false,
+            )
+        } catch {}
+    })
+}

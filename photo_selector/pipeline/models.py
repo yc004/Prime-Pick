@@ -30,6 +30,7 @@ class MetricsResult:
     is_unusable: bool = False
     reasons: List[str] = field(default_factory=list)
 
+    capture_ts: float = 0.0
     group_id: int = -1
     group_size: int = 1
     rank_in_group: int = 1
@@ -45,6 +46,7 @@ class MetricsResult:
             "technical_score": self.technical_score,
             "is_unusable": self.is_unusable,
             "reasons": ";".join(self.reasons),
+            "capture_ts": float(self.capture_ts or 0.0),
             "group_id": int(self.group_id),
             "group_size": int(self.group_size),
             "rank_in_group": int(self.rank_in_group),
@@ -76,6 +78,11 @@ class MetricsResult:
         res.technical_score = float(data.get("technical_score", 0))
         res.is_unusable = str(data.get("is_unusable", "False")).lower() == "true"
         res.reasons = data.get("reasons", "").split(";") if data.get("reasons") else []
+        if "capture_ts" in data:
+            try:
+                res.capture_ts = float(data.get("capture_ts", 0.0) or 0.0)
+            except Exception:
+                res.capture_ts = 0.0
         if "group_id" in data:
             try:
                 res.group_id = int(float(data.get("group_id", -1)))

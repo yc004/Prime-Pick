@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache electron-builder
+        uses: actions/cache@v4
+        with:
+          path: .cache/electron-builder
+          key: ${{ runner.os }}-electron-builder-${{ hashFiles('electron-app/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-builder-
+
+      - name: Extract version from tag
+        id: meta
+        shell: bash
+        run: |
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-engine.txt
+
+      - name: Install Python deps
+        run: python -m pip install --upgrade pip && pip install -r requirements-engine.txt
+
+      - name: Build Python engine (PyInstaller)
+        run: python scripts/build_engine.py --clean
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: electron-app/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: electron-app
+        run: npm ci
+
+      - name: Build and package (version from tag)
+        working-directory: electron-app
+        run: npm run build && npx electron-builder --publish never --config.extraMetadata.version=${{ steps.meta.outputs.version }}
+
+      - name: Upload Windows assets to GitHub Release
+        if: runner.os == 'Windows'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            electron-app/release2/*.exe
+            electron-app/release2/*.msi
+          fail_on_unmatched_files: true
+
+      - name: Upload macOS assets to GitHub Release
+        if: runner.os == 'macOS'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            electron-app/release2/*.dmg
+            electron-app/release2/*.zip
+          fail_on_unmatched_files: true

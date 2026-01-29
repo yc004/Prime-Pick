@@ -122,6 +122,16 @@ class XmpWriter:
             
             desired_ai = {kw for kw in (keywords or []) if isinstance(kw, str) and kw.startswith("AI/")}
 
+            seen_ai = set()
+            for li in list(bag.findall(li_tag)):
+                if not li.text or not li.text.startswith("AI/"):
+                    continue
+                if li.text in seen_ai:
+                    bag.remove(li)
+                    changed = True
+                else:
+                    seen_ai.add(li.text)
+
             for li in list(bag.findall(li_tag)):
                 if li.text and li.text.startswith("AI/") and li.text not in desired_ai:
                     bag.remove(li)

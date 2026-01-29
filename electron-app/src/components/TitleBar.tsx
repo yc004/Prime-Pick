@@ -36,7 +36,7 @@ const TitleBar: React.FC<TitleBarProps> = ({ title = "Prime Pick" }) => {
          style={{ WebkitAppRegion: 'drag' } as any}>
       
       <div className="flex items-center gap-2 text-sm font-medium opacity-80">
-        <img src="logo.svg" className="w-5 h-5 object-contain" draggable={false} />
+        <img src="PrimePick_pure.svg" className="w-5 h-5 object-contain" draggable={false} />
         <span>{title}</span>
       </div>
 

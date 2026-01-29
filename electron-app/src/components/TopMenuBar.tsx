@@ -9,6 +9,7 @@ import {
   LayoutOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
+  SettingOutlined,
   StopOutlined,
 } from '@ant-design/icons'
 import { shallow } from 'zustand/shallow'
@@ -41,9 +42,7 @@ const TopMenuBar: React.FC<Props> = ({ isElectron, onSelectDir, onReloadResults 
     profile,
     rebuildCache,
     groupingParams,
-    sidebarVisible,
     rightPanelVisible,
-    toggleSidebarVisible,
     toggleRightPanelVisible,
   } = useStore(
     (s) => ({
@@ -64,9 +63,7 @@ const TopMenuBar: React.FC<Props> = ({ isElectron, onSelectDir, onReloadResults 
       profile: s.profile,
       rebuildCache: s.rebuildCache,
       groupingParams: s.groupingParams,
-      sidebarVisible: s.sidebarVisible,
       rightPanelVisible: s.rightPanelVisible,
-      toggleSidebarVisible: s.toggleSidebarVisible,
       toggleRightPanelVisible: s.toggleRightPanelVisible,
     }),
     shallow,
@@ -120,13 +117,39 @@ const TopMenuBar: React.FC<Props> = ({ isElectron, onSelectDir, onReloadResults 
   }
 
   const handleAbout = () => {
+    const repoUrl = 'https://github.com/yc004/Prime-Pick'
+    const licenseUrl = `${repoUrl}/blob/main/LICENSE`
+    const open = (url: string) => {
+      if (window.electronAPI?.openExternal) {
+        window.electronAPI.openExternal(url)
+        return
+      }
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+
     Modal.info({
       title: '关于 Prime Pick',
       content: (
         <div className="text-slate-200">
-          <div>一键筛选照片清晰度/曝光质量，并支持相似分组与 XMP 写入。</div>
+          <div>批量评估照片技术质量（清晰度/曝光等），支持相似分组与 XMP sidecar 写入（Lightroom 工作流）。</div>
+          <div className="mt-3 grid grid-cols-[84px_1fr] gap-y-2 gap-x-3 text-sm">
+            <div className="text-slate-400">仓库</div>
+            <div className="truncate">
+              <Typography.Link onClick={() => open(repoUrl)} className="!text-slate-200">
+                {repoUrl}
+              </Typography.Link>
+            </div>
+            <div className="text-slate-400">协议</div>
+            <div className="truncate">
+              <Typography.Link onClick={() => open(licenseUrl)} className="!text-slate-200">
+                GNU GPLv3
+              </Typography.Link>
+            </div>
+            <div className="text-slate-400">技术栈</div>
+            <div className="text-slate-200">Electron + React（桌面端）· Python（计算/写入）</div>
+          </div>
           <div className="mt-2 text-xs text-slate-400">
-            快捷键：Ctrl+O 打开 · Ctrl+R 重载 · Ctrl+1/2 切换视图 · Ctrl+B/I 切换面板
+            快捷键：Ctrl+O 打开 · Ctrl+R 重载 · Ctrl+1/2 切换视图 · Ctrl+I 切换预览 · Ctrl+, 偏好设置
           </div>
         </div>
       ),
@@ -144,8 +167,8 @@ const TopMenuBar: React.FC<Props> = ({ isElectron, onSelectDir, onReloadResults 
     { key: 'all', label: '全部照片 (Ctrl+1)' },
     { key: 'grouped', label: '相似分组 (Ctrl+2)' },
     { type: 'divider' },
-    { key: 'toggleSidebar', label: `${sidebarVisible ? '隐藏' : '显示'}左侧面板 (Ctrl+B)`, icon: <LayoutOutlined /> },
     { key: 'toggleRightPanel', label: `${rightPanelVisible ? '隐藏' : '显示'}右侧面板 (Ctrl+I)`, icon: <LayoutOutlined /> },
+    { key: 'preferences', label: '偏好设置 (Ctrl+,)', icon: <SettingOutlined /> },
   ]
 
   const actionMenu: MenuProps['items'] = [
@@ -176,8 +199,8 @@ const TopMenuBar: React.FC<Props> = ({ isElectron, onSelectDir, onReloadResults 
 
   const onViewClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'all' || key === 'grouped') setViewMode(key as any)
-    if (key === 'toggleSidebar') toggleSidebarVisible()
     if (key === 'toggleRightPanel') toggleRightPanelVisible()
+    if (key === 'preferences') window.electronAPI?.openPreferencesWindow?.()
   }
 
   const onActionClick: MenuProps['onClick'] = ({ key }) => {
@@ -265,15 +288,10 @@ const TopMenuBar: React.FC<Props> = ({ isElectron, onSelectDir, onReloadResults 
         <Button
           size="small"
           icon={<LayoutOutlined />}
-          onClick={toggleSidebarVisible}
-          title="切换左侧面板 (Ctrl+B)"
-        />
-        <Button
-          size="small"
-          icon={<LayoutOutlined />}
           onClick={toggleRightPanelVisible}
           title="切换右侧面板 (Ctrl+I)"
         />
+        <Button size="small" icon={<SettingOutlined />} onClick={() => window.electronAPI?.openPreferencesWindow?.()} title="偏好设置 (Ctrl+,)" />
       </div>
     </div>
   )

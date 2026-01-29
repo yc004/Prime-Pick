@@ -178,6 +178,8 @@ def cmd_group(args):
         eps=args.eps,
         min_samples=args.min_samples,
         neighbor_window=args.neighbor_window,
+        time_window_secs=args.time_window_secs,
+        time_source=args.time_source,
         topk=args.topk,
         workers=args.workers,
         batch_size=args.batch_size,
@@ -229,6 +231,8 @@ def main():
     p_group.add_argument("--eps", type=float, default=0.12)
     p_group.add_argument("--min-samples", type=int, default=2)
     p_group.add_argument("--neighbor-window", type=int, default=80)
+    p_group.add_argument("--time-window-secs", type=float, default=6.0)
+    p_group.add_argument("--time-source", default="auto", choices=["auto", "exif", "mtime"])
     p_group.add_argument("--topk", type=int, default=2)
     p_group.add_argument("--workers", type=int, default=4)
     p_group.add_argument("--batch-size", type=int, default=32)

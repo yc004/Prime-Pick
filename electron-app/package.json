@@ -27,8 +27,12 @@
     ],
     "extraResources": [
       {
-        "from": "../dist/photo_selector_engine.exe",
-        "to": "engine/photo_selector_engine.exe"
+        "from": "../dist",
+        "to": "engine",
+        "filter": [
+          "photo_selector_engine",
+          "photo_selector_engine.exe"
+        ]
       }
     ],
     "win": {
@@ -42,14 +46,11 @@
       "deleteAppDataOnUninstall": true
     },
     "mac": {
-      "target": "dmg",
-      "icon": "build/icon.png",
-      "extraResources": [
-        {
-          "from": "../dist/photo_selector_engine",
-          "to": "engine/photo_selector_engine"
-        }
-      ]
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icon.png"
     }
   },
   "devDependencies": {

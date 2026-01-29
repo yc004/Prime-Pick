@@ -5,6 +5,7 @@ export interface MetricsResult {
     technical_score: number
     is_unusable: boolean
     reasons: string[]
+    capture_ts?: number
     group_id?: number
     group_size?: number
     rank_in_group?: number
@@ -32,6 +33,8 @@ export interface GroupsFile {
     eps: number
     min_samples: number
     neighbor_window: number
+    time_window_secs?: number
+    time_source?: string
     topk: number
     groups: GroupInfo[]
     noise_group_id: number
@@ -63,6 +66,8 @@ export interface AppState {
         eps: number
         minSamples: number
         neighborWindow: number
+        timeWindowSecs: number
+        timeSource: 'auto' | 'exif' | 'mtime'
         topk: number
         workers: number
         batchSize: number
@@ -88,7 +93,6 @@ export interface AppState {
     progress: { done: number, total: number } | null
 
     rebuildCache: boolean
-
-    sidebarVisible: boolean
     rightPanelVisible: boolean
+
 }

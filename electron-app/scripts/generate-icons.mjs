@@ -8,7 +8,7 @@ import { PNG } from 'pngjs'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const projectRoot = path.resolve(__dirname, '..')
 
-const srcSvgPath = path.resolve(projectRoot, '..', 'sources', 'logo', 'PrimePick.svg')
+const srcSvgPath = path.resolve(projectRoot, 'public', 'PrimePick_pure.svg')
 const outPublicPng = path.join(projectRoot, 'public', 'icon.png')
 const outBuildDir = path.join(projectRoot, 'build')
 const outBuildPng = path.join(outBuildDir, 'icon.png')

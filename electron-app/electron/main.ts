@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, protocol, nativeImage, shell } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { spawn } from 'child_process'
@@ -20,6 +20,7 @@ process.env.DIST = path.join(__dirname, '../dist')
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(__dirname, '../public')
 
 let win: BrowserWindow | null
+let prefWin: BrowserWindow | null = null
 let pythonProcess: ChildProcess | null = null
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
@@ -85,6 +86,7 @@ function normalizeMetricsRecord(record: any) {
     technical_score: toNumber(record?.technical_score, 0),
     is_unusable: toBool(record?.is_unusable, false),
     reasons,
+    capture_ts: toNumber(record?.capture_ts, 0),
     group_id: toNumber(record?.group_id, -1),
     group_size: toNumber(record?.group_size, 1),
     rank_in_group: toNumber(record?.rank_in_group, 1),
@@ -166,17 +168,6 @@ function createWindow() {
   win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     if (level >= 2) log.error('renderer-console', { level, message, line, sourceId })
   })
-
-  // Window control IPCs
-  ipcMain.on('window-minimize', () => win?.minimize())
-  ipcMain.on('window-maximize', () => {
-    if (win?.isMaximized()) {
-      win.unmaximize()
-    } else {
-      win?.maximize()
-    }
-  })
-  ipcMain.on('window-close', () => win?.close())
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
@@ -340,15 +331,43 @@ function getSpawnParameters(command: string, extraArgs: string[]) {
             env: { ...process.env } // inherit env but no special python setup
         }
     } else {
+        const resolvePythonExecutable = () => {
+            const override = process.env.PRIMEPICK_PYTHON
+            if (override && fs.existsSync(override)) return override
+
+            const condaPrefix = process.env.CONDA_PREFIX
+            if (condaPrefix) {
+                const condaPy =
+                    process.platform === 'win32'
+                        ? path.join(condaPrefix, 'python.exe')
+                        : path.join(condaPrefix, 'bin', 'python')
+                if (fs.existsSync(condaPy)) return condaPy
+            }
+
+            if (process.platform === 'win32') {
+                const userProfile = process.env.USERPROFILE
+                const candidates = [
+                    userProfile ? path.join(userProfile, '.conda', 'envs', 'photo_selector', 'python.exe') : null,
+                    userProfile ? path.join(userProfile, 'miniconda3', 'envs', 'photo_selector', 'python.exe') : null,
+                    userProfile ? path.join(userProfile, 'anaconda3', 'envs', 'photo_selector', 'python.exe') : null,
+                ].filter(Boolean) as string[]
+                for (const p of candidates) {
+                    if (fs.existsSync(p)) return p
+                }
+            }
+
+            return 'python'
+        }
+
         // Development: use python script
         const projectRoot = path.resolve(__dirname, '../../') 
         const scriptPath = path.join(projectRoot, 'photo_selector/cli.py')
         
         return {
-            cmd: 'python',
+            cmd: resolvePythonExecutable(),
             args: [scriptPath, command, ...extraArgs],
             cwd: projectRoot,
-            env: { ...process.env, PYTHONPATH: projectRoot }
+            env: { ...process.env, PYTHONPATH: projectRoot, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
         }
     }
 }
@@ -396,6 +415,62 @@ function spawnPythonProcess(event: Electron.IpcMainEvent, eventPrefix: string, s
 }
 
 function setupIpc() {
+    ipcMain.on('window-minimize', (event) => BrowserWindow.fromWebContents(event.sender)?.minimize())
+    ipcMain.on('window-maximize', (event) => {
+        const w = BrowserWindow.fromWebContents(event.sender)
+        if (!w) return
+        if (w.isMaximized()) w.unmaximize()
+        else w.maximize()
+    })
+    ipcMain.on('window-close', (event) => BrowserWindow.fromWebContents(event.sender)?.close())
+
+    ipcMain.handle('open-external', async (_event, url: unknown) => {
+        const u = typeof url === 'string' ? url.trim() : ''
+        if (!u) return false
+        if (!/^https?:\/\//i.test(u)) return false
+        await shell.openExternal(u)
+        return true
+    })
+
+    ipcMain.on('open-preferences-window', () => {
+        if (!win || win.isDestroyed()) return
+        if (prefWin && !prefWin.isDestroyed()) {
+            prefWin.focus()
+            return
+        }
+
+        const distDir = app.isPackaged ? path.join(app.getAppPath(), 'dist') : path.join(__dirname, '../dist')
+        const publicDir = app.isPackaged ? distDir : path.join(__dirname, '../public')
+
+        prefWin = new BrowserWindow({
+            width: 980,
+            height: 900,
+            parent: win,
+            modal: false,
+            show: true,
+            icon: path.join(publicDir, 'icon.png'),
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.cjs'),
+                sandbox: false,
+                contextIsolation: true,
+                nodeIntegration: false,
+            },
+            titleBarStyle: 'hidden',
+            autoHideMenuBar: true,
+            backgroundColor: '#020617',
+        })
+
+        prefWin.on('closed', () => {
+            prefWin = null
+        })
+
+        if (VITE_DEV_SERVER_URL) {
+            prefWin.loadURL(`${VITE_DEV_SERVER_URL}#/preferences`)
+        } else {
+            prefWin.loadFile(path.join(distDir, 'index.html'), { hash: '/preferences' })
+        }
+    })
+
     ipcMain.handle('select-directory', async () => {
         const result = await dialog.showOpenDialog(win!, {
             properties: ['openDirectory']
@@ -472,6 +547,8 @@ function setupIpc() {
             '--eps', String(p.eps ?? 0.12),
             '--min-samples', String(p.minSamples ?? 2),
             '--neighbor-window', String(p.neighborWindow ?? 80),
+            '--time-window-secs', String(p.timeWindowSecs ?? 6),
+            '--time-source', String(p.timeSource ?? 'auto'),
             '--topk', String(p.topk ?? 2),
             '--workers', String(p.workers ?? 4),
             '--batch-size', String(p.batchSize ?? 32),

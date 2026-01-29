@@ -10,9 +10,11 @@ interface Window {
     startGroup: (args: any) => void
     cancelGroup: () => void
     writeXmp: (args: any) => void
+    openExternal: (url: string) => Promise<boolean>
     minimize: () => void
     maximize: () => void
     close: () => void
+    openPreferencesWindow: () => void
     onComputeProgress: (callback: (data: any) => void) => () => void
     onComputeDone: (callback: (code: number) => void) => () => void
     onGroupProgress: (callback: (data: any) => void) => () => void

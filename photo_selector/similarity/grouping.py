@@ -8,6 +8,7 @@ import numpy as np
 
 from photo_selector.io.embedding_cache_sqlite import EmbeddingCacheSQLite
 from photo_selector.io.image_reader import read_and_resize
+from photo_selector.io.photo_time import get_capture_timestamp
 from photo_selector.pipeline.models import MetricsResult
 
 
@@ -237,6 +238,8 @@ def dbscan_windowed_cosine(
     eps: float,
     min_samples: int,
     neighbor_window: int,
+    time_secs: Optional[float] = None,
+    timestamps: Optional[np.ndarray] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
 ) -> List[int]:
     n = int(embs.shape[0])
@@ -247,6 +250,11 @@ def dbscan_windowed_cosine(
     neighbor_window = max(1, int(neighbor_window))
     min_samples = max(1, int(min_samples))
 
+    time_secs_f = float(time_secs) if time_secs is not None else None
+    ts = None
+    if time_secs_f is not None and time_secs_f > 0 and timestamps is not None and int(timestamps.shape[0]) == n:
+        ts = timestamps.astype(np.float64, copy=False)
+
     neighbors: List[List[int]] = [[] for _ in range(n)]
     for i in range(n):
         start = max(0, i - neighbor_window)
@@ -255,6 +263,9 @@ def dbscan_windowed_cosine(
         for j in range(start, end):
             if j == i:
                 continue
+            if ts is not None:
+                if abs(float(ts[i]) - float(ts[j])) > time_secs_f:
+                    continue
             if _cosine_sim(vi, embs[j]) >= sim_threshold:
                 neighbors[i].append(j)
         if progress_callback and (i % 50 == 0 or i == n - 1):
@@ -374,6 +385,8 @@ def write_groups_json(
     eps: float,
     min_samples: int,
     neighbor_window: int,
+    time_window_secs: float,
+    time_source: str,
     topk: int,
     groups: List[GroupInfo],
     noise: List[GroupItem],
@@ -385,6 +398,8 @@ def write_groups_json(
         "eps": float(eps),
         "min_samples": int(min_samples),
         "neighbor_window": int(neighbor_window),
+        "time_window_secs": float(time_window_secs),
+        "time_source": str(time_source),
         "topk": int(topk),
         "groups": [
             {
@@ -411,6 +426,8 @@ def run_grouping(
     eps: float,
     min_samples: int,
     neighbor_window: int,
+    time_window_secs: float,
+    time_source: str,
     topk: int,
     workers: int,
     batch_size: int,
@@ -420,20 +437,38 @@ def run_grouping(
     cache_path = os.path.join(output_dir, "embedding_cache.db")
     cache = EmbeddingCacheSQLite(cache_path)
 
-    photo_paths: List[Tuple[str, str]] = []
+    time_source_norm = (time_source or "auto").strip().lower()
+    if time_source_norm not in ("auto", "exif", "mtime"):
+        time_source_norm = "auto"
+
+    photo_paths: List[Tuple[str, str, float]] = []
     for r in results:
         fp = str(r.filename)
         candidate = os.path.normpath(fp)
         if os.path.exists(candidate):
-            photo_paths.append((fp, candidate))
+            ts = float(getattr(r, "capture_ts", 0.0) or 0.0)
+            if ts <= 0:
+                ts = float(get_capture_timestamp(candidate, source=time_source_norm) or 0.0)
+                r.capture_ts = ts
+            photo_paths.append((fp, candidate, ts))
             continue
         abs_path = os.path.normpath(os.path.join(input_dir, fp))
         if os.path.exists(abs_path):
-            photo_paths.append((fp, abs_path))
+            ts = float(getattr(r, "capture_ts", 0.0) or 0.0)
+            if ts <= 0:
+                ts = float(get_capture_timestamp(abs_path, source=time_source_norm) or 0.0)
+                r.capture_ts = ts
+            photo_paths.append((fp, abs_path, ts))
 
-    photo_paths.sort(key=lambda x: x[0])
+    time_window_secs_f = float(time_window_secs or 0.0)
+    if time_window_secs_f > 0:
+        photo_paths.sort(key=lambda x: (x[2], x[0]))
+    else:
+        photo_paths.sort(key=lambda x: x[0])
+
     filenames = [x[0] for x in photo_paths]
     abs_paths = [x[1] for x in photo_paths]
+    timestamps = np.array([x[2] for x in photo_paths], dtype=np.float64)
 
     def on_embed_progress(done: int, total: int, cache_hits: int):
         if progress_callback:
@@ -474,6 +509,8 @@ def run_grouping(
         eps=eps,
         min_samples=min_samples,
         neighbor_window=neighbor_window,
+        time_secs=time_window_secs_f if time_window_secs_f > 0 else None,
+        timestamps=timestamps if time_window_secs_f > 0 else None,
         progress_callback=on_cluster_progress,
     )
     labels_by_filename = {fn: int(labels[i]) for i, fn in enumerate(filenames)}
@@ -489,6 +526,8 @@ def run_grouping(
         eps=eps,
         min_samples=min_samples,
         neighbor_window=neighbor_window,
+        time_window_secs=time_window_secs_f,
+        time_source=time_source_norm,
         topk=topk,
         groups=groups,
         noise=noise,
