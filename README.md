@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="electron-app/public/logo.svg" alt="Prime Pick Logo" width="180" />
+</p>
+
 # Prime Pick
 
 Prime Pick 是一个用于“批量评估照片技术质量并辅助筛选”的桌面工具：
