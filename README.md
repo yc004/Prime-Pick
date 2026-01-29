@@ -1,11 +1,17 @@
-# AI Photographer
+# Prime Pick
 
-一个用于“批量评估照片技术质量并辅助筛选”的桌面工具：
+Prime Pick 是一个用于“批量评估照片技术质量并辅助筛选”的桌面工具：
 
 - 桌面端：Electron + React（在 `electron-app/`）
 - 计算/写入：Python（在 `photo_selector/`）
 
 它会对照片做基础技术指标分析（如清晰度、曝光等），生成评分结果，并可按规则写入 XMP sidecar（用于 Lightroom 等工作流里的星级/颜色标签/关键词）。
+
+## 版本与发布
+
+- 已在 GitHub 发布稳定版：v1.0.0（见 Releases / Tags）
+- 本 README 默认按“从源码运行”说明（适用于克隆仓库或下载 Source code 压缩包）
+- 如果你下载的是已打包的桌面端安装包（例如 exe/dmg），通常可直接安装运行；若功能依赖 Python，则仍需在本机安装 Python 与相关依赖
 
 ## 功能概览
 
