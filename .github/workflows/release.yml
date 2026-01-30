@@ -76,7 +76,6 @@ jobs:
           generate_release_notes: true
           files: |
             electron-app/release2/*.exe
-            electron-app/release2/*.msi
           fail_on_unmatched_files: true
 
       - name: Upload macOS assets to GitHub Release
