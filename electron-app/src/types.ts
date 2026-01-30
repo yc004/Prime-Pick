@@ -10,6 +10,8 @@ export interface MetricsResult {
     group_size?: number
     rank_in_group?: number
     is_group_best?: boolean
+    emotion?: string
+    emotion_score?: number
 }
 
 export interface GroupItem {
@@ -49,6 +51,7 @@ export interface SortOption {
 export interface FilterOption {
     minScore: number
     blurryMode: 'all' | 'only' | 'exclude'
+    minEmotionScore?: number
 }
 
 export type Profile = 'daylight' | 'event_indoor' | 'outdoor_portrait' | 'night'
@@ -92,6 +95,7 @@ export interface AppState {
     showUnusable: boolean
     sortOption: SortOption
     filterOption: FilterOption
+    filterEmotions: Set<string>
     photoLayout: PhotoLayout
     
     // Params

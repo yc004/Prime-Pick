@@ -22,6 +22,7 @@ process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(__dirnam
 let win: BrowserWindow | null
 let prefWin: BrowserWindow | null = null
 let pythonProcess: ChildProcess | null = null
+let modelsProcess: ChildProcess | null = null
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
@@ -80,6 +81,9 @@ function normalizeMetricsRecord(record: any) {
     ? record.exposure.flags.map((v: any) => String(v))
     : splitDelimited(record?.exposure_flags)
   const reasons = Array.isArray(record?.reasons) ? record.reasons.map((v: any) => String(v)) : splitDelimited(record?.reasons)
+  const emotion = typeof record?.emotion === 'string' ? record.emotion : ''
+  const emotionScoreRaw = record?.emotion_score ?? record?.emotionScore
+  const emotion_score = emotionScoreRaw === '' || emotionScoreRaw == null ? undefined : toNumber(emotionScoreRaw, 0)
 
   return {
     filename: String(record?.filename ?? ''),
@@ -93,6 +97,8 @@ function normalizeMetricsRecord(record: any) {
     group_size: toNumber(record?.group_size, 1),
     rank_in_group: toNumber(record?.rank_in_group, 1),
     is_group_best: toBool(record?.is_group_best, false),
+    emotion: emotion || undefined,
+    emotion_score,
   }
 }
 
@@ -192,6 +198,9 @@ app.on('window-all-closed', () => {
     app.quit()
     if (pythonProcess) {
         pythonProcess.kill()
+    }
+    if (modelsProcess) {
+        modelsProcess.kill()
     }
   }
 })
@@ -316,6 +325,12 @@ app.whenReady().then(() => {
 
     createWindow()
     setupIpc()
+
+    // Auto-check models on startup
+    setTimeout(() => {
+        const params = getSpawnParameters('check-models', [])
+        spawnPythonProcess(null, 'check-models', params)
+    }, 1500)
 })
 
 function getSpawnParameters(command: string, extraArgs: string[]) {
@@ -377,46 +392,75 @@ function getSpawnParameters(command: string, extraArgs: string[]) {
     }
 }
 
-function spawnPythonProcess(event: Electron.IpcMainEvent, eventPrefix: string, spawnParams: { cmd: string, args: string[], cwd: string, env: any }) {
-    if (pythonProcess) {
-        pythonProcess.kill()
+function spawnPythonProcess(
+  event: Electron.IpcMainEvent | null,
+  eventPrefix: string,
+  spawnParams: { cmd: string, args: string[], cwd: string, env: any },
+) {
+  const isModelCheck = eventPrefix === 'check-models'
+  if (isModelCheck) {
+    if (modelsProcess) modelsProcess.kill()
+  } else {
+    if (pythonProcess) pythonProcess.kill()
+  }
+
+  const reply = (channel: string, ...args: any[]) => {
+    if (event) {
+      event.reply(channel, ...args)
+      return
     }
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(channel, ...args)
+    }
+  }
 
-    log.info(`Spawning: ${spawnParams.cmd} ${spawnParams.args.join(' ')}`)
-    
-    pythonProcess = spawn(spawnParams.cmd, spawnParams.args, {
-        cwd: spawnParams.cwd,
-        env: spawnParams.env
-    })
+  log.info(`Spawning: ${spawnParams.cmd} ${spawnParams.args.join(' ')}`)
 
-    pythonProcess.stdout?.on('data', (data) => {
-        const lines = data.toString().split('\n')
-        for (const line of lines) {
-            if (!line.trim()) continue
-            try {
-                const json = JSON.parse(line)
-                event.reply(`${eventPrefix}-progress`, json)
-            } catch (e) {
-                log.info(`${eventPrefix} stdout:`, line)
-            }
+  const setProc = (p: ChildProcess | null) => {
+    if (isModelCheck) modelsProcess = p
+    else pythonProcess = p
+  }
+  const getProc = () => (isModelCheck ? modelsProcess : pythonProcess)
+
+  try {
+    setProc(spawn(spawnParams.cmd, spawnParams.args, {
+      cwd: spawnParams.cwd,
+      env: spawnParams.env,
+    }))
+  } catch (e: any) {
+    log.error(`${eventPrefix} spawn failed`, e)
+    reply(`${eventPrefix}-done`, 1)
+    setProc(null)
+    return
+  }
+
+  getProc()?.stdout?.on('data', (data) => {
+    const lines = data.toString().split('\n')
+    for (const line of lines) {
+      if (!line.trim()) continue
+      try {
+        const json = JSON.parse(line)
+        reply(`${eventPrefix}-progress`, json)
+      } catch {
+        if (isModelCheck) {
+          reply(`${eventPrefix}-progress`, { type: 'log', line })
+        } else {
+          log.info(`${eventPrefix} stdout:`, line)
         }
-    })
+      }
+    }
+  })
 
-    pythonProcess.stderr?.on('data', (data) => {
-        const msg = data.toString()
-        log.error(`${eventPrefix} stderr: ${msg}`)
-        // Optional: filter out harmless stderr
-    })
+  getProc()?.stderr?.on('data', (data) => {
+    const msg = data.toString()
+    log.error(`${eventPrefix} stderr: ${msg}`)
+  })
 
-    pythonProcess.on('close', (code) => {
-        log.info(`${eventPrefix} finished with code:`, code)
-        event.reply(`${eventPrefix}-done`, code)
-        pythonProcess = null
-        if (code !== 0) {
-             // We can send a generic error if needed, but let the renderer handle non-zero codes via the done event if appropriate
-             // Or send explicit error
-        }
-    })
+  getProc()?.on('close', (code) => {
+    log.info(`${eventPrefix} finished with code:`, code)
+    reply(`${eventPrefix}-done`, code)
+    setProc(null)
+  })
 }
 
 function setupIpc() {
@@ -569,6 +613,13 @@ function setupIpc() {
         ]
         const spawnParams = getSpawnParameters('group', cliArgs)
         spawnPythonProcess(event, 'group', spawnParams)
+    })
+
+    ipcMain.on('check-models', (event, args) => {
+        const force = Boolean(args?.force)
+        const cliArgs = force ? ['--force'] : []
+        const params = getSpawnParameters('check-models', cliArgs)
+        spawnPythonProcess(event, 'check-models', params)
     })
 
     ipcMain.on('cancel-compute', () => {

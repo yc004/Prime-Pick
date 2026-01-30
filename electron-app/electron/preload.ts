@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelCompute: () => ipcRenderer.send('cancel-compute'),
   startGroup: (args: any) => ipcRenderer.send('start-group', args),
   cancelGroup: () => ipcRenderer.send('cancel-group'),
+  checkModels: (args?: any) => ipcRenderer.send('check-models', args ?? {}),
   writeXmp: (args: any) => ipcRenderer.send('write-xmp', args),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   setWindowTheme: (theme: 'dark' | 'light') => ipcRenderer.send('set-window-theme', theme),
@@ -51,6 +52,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_: any, code: number) => callback(code)
       ipcRenderer.on('write-xmp-done', handler)
       return () => ipcRenderer.off('write-xmp-done', handler)
+  },
+
+  onCheckModelsProgress: (callback: (data: any) => void) => {
+      const handler = (_: any, data: any) => callback(data)
+      ipcRenderer.on('check-models-progress', handler)
+      return () => ipcRenderer.off('check-models-progress', handler)
+  },
+  onCheckModelsDone: (callback: (code: number) => void) => {
+      const handler = (_: any, code: number) => callback(code)
+      ipcRenderer.on('check-models-done', handler)
+      return () => ipcRenderer.off('check-models-done', handler)
   },
 
   onError: (callback: (error: { title: string; content: string }) => void) => {

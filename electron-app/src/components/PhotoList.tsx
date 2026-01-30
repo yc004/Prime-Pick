@@ -88,9 +88,15 @@ const PhotoRow = ({
           </Tag>
         </div>
 
-        <div className="flex gap-3 text-xs text-muted">
+        <div className="flex gap-3 text-xs text-muted items-center">
           <span>清晰: {photo.sharpness.score.toFixed(1)}</span>
           <span>曝光: {photo.exposure.score.toFixed(1)}</span>
+          {photo.emotion && (
+              <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 uppercase text-[10px]">
+                {photo.emotion}
+                {typeof photo.emotion_score === 'number' ? ` ${photo.emotion_score.toFixed(0)}` : ''}
+              </span>
+          )}
         </div>
 
         {photo.reasons.length > 0 && (
@@ -195,6 +201,12 @@ const PhotoCell = ({
             <span>清晰 {photo.sharpness.score.toFixed(0)}</span>
             <span>曝光 {photo.exposure.score.toFixed(0)}</span>
           </div>
+          {photo.emotion && (
+            <div className="mt-0.5 text-[10px] text-blue-300 uppercase">
+              {photo.emotion}
+              {typeof photo.emotion_score === 'number' ? ` ${photo.emotion_score.toFixed(0)}` : ''}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -217,6 +229,7 @@ const PhotoList: React.FC<Props> = ({ isElectron }) => {
     sortOption,
     setSortOption,
     filterOption,
+    filterEmotions,
     config,
     photoLayout,
     setPhotoLayout,
@@ -232,6 +245,7 @@ const PhotoList: React.FC<Props> = ({ isElectron }) => {
       sortOption: s.sortOption,
       setSortOption: s.setSortOption,
       filterOption: s.filterOption,
+      filterEmotions: s.filterEmotions,
       config: s.config,
       photoLayout: s.photoLayout,
       setPhotoLayout: s.setPhotoLayout,
@@ -261,6 +275,17 @@ const PhotoList: React.FC<Props> = ({ isElectron }) => {
             const isBlurry = sharpnessScore < sharpnessThreshold
             return blurryMode === 'only' ? isBlurry : !isBlurry
         })
+    }
+
+    // 3.5 Filter Emotions
+    if (filterEmotions.size > 0) {
+        res = res.filter(p => p.emotion && filterEmotions.has(p.emotion))
+    }
+    
+    // 3.6 Filter Emotion Score
+    const minEmotionScore = filterOption?.minEmotionScore ?? 0
+    if (minEmotionScore > 0) {
+        res = res.filter((p) => typeof p.emotion_score === 'number' && p.emotion_score >= minEmotionScore)
     }
 
     // 4. Sort
@@ -300,7 +325,7 @@ const PhotoList: React.FC<Props> = ({ isElectron }) => {
     })
 
     return res
-  }, [photos, showUnusable, sortOption, filterOption, config?.thresholds?.sharpness])
+  }, [photos, showUnusable, sortOption, filterOption, filterEmotions, config?.thresholds?.sharpness])
 
   const visiblePhotos = useMemo(() => {
     const q = deferredKeyword.trim().toLowerCase()

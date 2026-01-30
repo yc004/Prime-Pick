@@ -36,6 +36,9 @@ class MetricsResult:
     rank_in_group: int = 1
     is_group_best: bool = False
     
+    emotion: Optional[str] = None
+    emotion_score: Optional[float] = None
+
     # For caching, we might want to store the raw values as a dict or similar
     # but dataclass is fine.
     
@@ -51,6 +54,8 @@ class MetricsResult:
             "group_size": int(self.group_size),
             "rank_in_group": int(self.rank_in_group),
             "is_group_best": bool(self.is_group_best),
+            "emotion": self.emotion if self.emotion else "",
+            "emotion_score": float(self.emotion_score) if self.emotion_score is not None else ""
         }
         
         if self.sharpness:
@@ -102,6 +107,13 @@ class MetricsResult:
             v = data.get("is_group_best", False)
             res.is_group_best = str(v).lower() == "true" if not isinstance(v, bool) else bool(v)
         
+        res.emotion = data.get("emotion") if data.get("emotion") else None
+        if "emotion_score" in data and data.get("emotion_score") not in (None, ""):
+            try:
+                res.emotion_score = float(data.get("emotion_score"))
+            except Exception:
+                res.emotion_score = None
+
         if "sharpness_score" in data:
             res.sharpness = SharpnessResult(
                 score=float(data["sharpness_score"]),
