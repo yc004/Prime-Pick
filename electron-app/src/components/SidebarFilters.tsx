@@ -381,7 +381,7 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
                 </Button>
 
                 {groupProgress && (
-                    <div className="text-xs text-slate-400 leading-relaxed">
+                    <div className="text-xs text-muted leading-relaxed">
                         <div>阶段：{groupProgress.stage}</div>
                         <div>
                             进度：{groupProgress.done}/{groupProgress.total}
@@ -425,8 +425,8 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
                     <Text type="secondary" className="text-xs">已加载</Text>
                     <Text className="!text-text text-sm font-semibold">{photos.length}</Text>
                 </div>
-                <div className="mt-2 text-[11px] text-slate-400 leading-relaxed">
-                    快捷键：Ctrl 多选 · Shift 连选
+                <div className="mt-2 text-[11px] text-muted leading-relaxed">
+                    快捷键请在顶部菜单「帮助 → 快捷键」查看
                 </div>
             </div>
         </div>

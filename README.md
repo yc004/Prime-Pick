@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="electron-app/public/logo.svg" alt="Prime Pick Logo" width="180" />
+  <img src="electron-app/public/PrimePick_pure.svg" alt="Prime Pick Logo" width="180" />
 </p>
 
 # Prime Pick

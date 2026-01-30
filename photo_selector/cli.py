@@ -69,8 +69,6 @@ def apply_config(config_path):
         logger.error(f"Failed to load config: {e}")
 
 def cmd_compute(args):
-    apply_config(args.config_json)
-    
     # Profile logic
     if args.profile == "night":
         default_config.LOW_LIGHT_THRESHOLD = 20
@@ -80,6 +78,8 @@ def cmd_compute(args):
     elif args.profile == "outdoor_portrait":
         default_config.WEIGHT_EXPOSURE = 2.0 # More sensitive to exposure
         # default_config.HIGHLIGHT_CLIPPING_THRESHOLD = ... (if exists)
+
+    apply_config(args.config_json)
         
     def on_progress(done, total):
         print_json({"type": "progress", "done": done, "total": total})

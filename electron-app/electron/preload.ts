@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelGroup: () => ipcRenderer.send('cancel-group'),
   writeXmp: (args: any) => ipcRenderer.send('write-xmp', args),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+  setWindowTheme: (theme: 'dark' | 'light') => ipcRenderer.send('set-window-theme', theme),
   
   // Window controls
   minimize: () => ipcRenderer.send('window-minimize'),

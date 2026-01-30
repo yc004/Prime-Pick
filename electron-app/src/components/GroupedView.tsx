@@ -60,7 +60,7 @@ const GroupRow = ({
           primarySrc={thumbSrc}
           fallbackSrc={originalSrc}
           className="w-full h-full object-cover"
-          placeholder={<div className="w-full h-full flex items-center justify-center text-[10px] text-slate-400">无预览</div>}
+          placeholder={<div className="w-full h-full flex items-center justify-center text-[10px] text-muted">无预览</div>}
         />
       </div>
       <div className="min-w-0 flex-1">
@@ -68,7 +68,7 @@ const GroupRow = ({
           <Text className="!text-text text-xs font-medium">组 #{g.group_id}</Text>
           <Tag className="mr-0 text-[10px] leading-tight px-1 py-0.5">{g.group_size}</Tag>
         </div>
-        <div className="text-[11px] text-slate-400 truncate">
+        <div className="text-[11px] text-muted truncate">
           {g.best?.slice(0, 2).map((x) => x.split(/[/\\]/).pop()).join(' · ')}
         </div>
       </div>
@@ -128,7 +128,7 @@ const GroupPhotoRow = ({
           fallbackSrc={originalSrc}
           alt={photo.filename}
           className="w-full h-full object-cover"
-          placeholder={<div className="w-full h-full flex items-center justify-center text-[10px] text-slate-400">无预览</div>}
+          placeholder={<div className="w-full h-full flex items-center justify-center text-[10px] text-muted">无预览</div>}
         />
         {isBest && (
           <div className="absolute top-1 left-1 bg-emerald-500/80 text-white text-[10px] px-1 py-0.5 rounded flex items-center gap-1">
@@ -152,7 +152,7 @@ const GroupPhotoRow = ({
           </Tag>
         </div>
 
-        <div className="flex gap-3 text-xs text-gray-400">
+        <div className="flex gap-3 text-xs text-muted">
           <span>组内排名: {rank || '-'}</span>
           <span>清晰: {photo.sharpness.score.toFixed(1)}</span>
           <span>曝光: {photo.exposure.score.toFixed(1)}</span>
@@ -248,6 +248,12 @@ const GroupedView: React.FC<Props> = ({ isElectron }) => {
 
   const activeGroupId = selectedGroupId ?? (derivedGroups[0]?.group_id ?? null)
 
+  const photosByFilename = useMemo(() => {
+    const m = new Map<string, MetricsResult>()
+    for (const p of photos) m.set(p.filename, p)
+    return m
+  }, [photos])
+
   const activePhotos = useMemo(() => {
     if (activeGroupId == null) return []
     let arr = photos.filter((p) => Number(p.group_id ?? -1) === activeGroupId)
@@ -257,9 +263,27 @@ const GroupedView: React.FC<Props> = ({ isElectron }) => {
       if (ra !== rb) return ra - rb
       return Number(b.technical_score) - Number(a.technical_score)
     })
+    if (arr.length === 0 && groups?.groups?.length) {
+      const g = groups.groups.find((x: any) => Number(x?.group_id) === activeGroupId)
+      const items = Array.isArray((g as any)?.items) ? (g as any).items : []
+      const merged = items
+        .map((it: any) => {
+          const base = photosByFilename.get(String(it?.filename ?? ''))
+          if (!base) return null
+          return {
+            ...base,
+            group_id: activeGroupId,
+            group_size: Number((g as any)?.group_size ?? base.group_size ?? 1),
+            rank_in_group: Number(it?.rank_in_group ?? base.rank_in_group ?? 1),
+            is_group_best: Boolean(it?.is_group_best ?? base.is_group_best ?? false),
+          } as MetricsResult
+        })
+        .filter(Boolean) as MetricsResult[]
+      arr = merged
+    }
     if (showOnlyGroupBest) arr = arr.filter((p) => Boolean(p.is_group_best))
     return arr
-  }, [photos, activeGroupId, showOnlyGroupBest])
+  }, [photos, photosByFilename, groups, activeGroupId, showOnlyGroupBest])
 
   const activeGroupInfo = useMemo(() => derivedGroups.find((g) => g.group_id === activeGroupId) ?? null, [
     derivedGroups,
@@ -291,7 +315,7 @@ const GroupedView: React.FC<Props> = ({ isElectron }) => {
 
   if (!derivedGroups.length) {
     return (
-      <div className="h-full flex items-center justify-center text-gray-500">
+      <div className="h-full flex items-center justify-center text-muted">
         未找到分组结果（请先运行相似分组）
       </div>
     )
@@ -309,21 +333,24 @@ const GroupedView: React.FC<Props> = ({ isElectron }) => {
         <div className="h-[calc(100%-41px)] min-h-0">
           <AutoSizer
             style={{ width: '100%', height: '100%' }}
-            renderProp={({ height, width }) => (
-              <List<GroupRowData>
-                rowCount={derivedGroups.length}
-                rowHeight={60}
-                rowComponent={GroupRow}
-                rowProps={{
-                  groups: derivedGroups,
-                  selectedGroupId: activeGroupId,
-                  onSelect: (gid) => setSelectedGroupId(gid),
-                  getThumbSrc,
-                  getOriginalSrc: getImgSrc,
-                }}
-                style={{ height, width }}
-              />
-            )}
+            renderProp={({ height, width }) => {
+              if (height == null || width == null) return null
+              return (
+                <List<GroupRowData>
+                  rowCount={derivedGroups.length}
+                  rowHeight={60}
+                  rowComponent={GroupRow}
+                  rowProps={{
+                    groups: derivedGroups,
+                    selectedGroupId: activeGroupId,
+                    onSelect: (gid) => setSelectedGroupId(gid),
+                    getThumbSrc,
+                    getOriginalSrc: getImgSrc,
+                  }}
+                  style={{ height, width }}
+                />
+              )
+            }}
           />
         </div>
       </div>
@@ -357,21 +384,24 @@ const GroupedView: React.FC<Props> = ({ isElectron }) => {
         <div className="flex-1 min-h-0">
           <AutoSizer
             style={{ width: '100%', height: '100%' }}
-            renderProp={({ height, width }) => (
-              <List<PhotoRowData>
-                rowCount={activePhotos.length}
-                rowHeight={100}
-                rowComponent={GroupPhotoRow}
-                rowProps={{
-                  photos: activePhotos,
-                  selectedPhotos,
-                  onRowClick,
-                  getThumbSrc,
-                  getOriginalSrc: getImgSrc,
-                }}
-                style={{ height, width }}
-              />
-            )}
+            renderProp={({ height, width }) => {
+              if (height == null || width == null) return null
+              return (
+                <List<PhotoRowData>
+                  rowCount={activePhotos.length}
+                  rowHeight={100}
+                  rowComponent={GroupPhotoRow}
+                  rowProps={{
+                    photos: activePhotos,
+                    selectedPhotos,
+                    onRowClick,
+                    getThumbSrc,
+                    getOriginalSrc: getImgSrc,
+                  }}
+                  style={{ height, width }}
+                />
+              )
+            }}
           />
         </div>
       </div>

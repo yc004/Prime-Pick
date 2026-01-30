@@ -51,10 +51,22 @@ export interface FilterOption {
     blurryMode: 'all' | 'only' | 'exclude'
 }
 
+export type Profile = 'daylight' | 'event_indoor' | 'outdoor_portrait' | 'night'
+
+export interface ScoreConfig {
+    max_long_edge: number
+    weights: { sharpness: number, exposure: number }
+    thresholds: { sharpness: number, low_light: number }
+}
+
+export type PhotoLayout = 'list' | 'grid'
+
 export interface AppState {
     inputDir: string | null
     photos: MetricsResult[]
     selectedPhotos: Set<string> // filenames
+
+    themeMode: 'dark' | 'light' | 'system'
 
     viewMode: 'all' | 'grouped'
     groups: GroupsFile | null
@@ -76,23 +88,22 @@ export interface AppState {
     groupProgress: { stage: string, done: number, total: number, cache_hit?: number } | null
     
     // Filters
-    profile: 'daylight' | 'event_indoor' | 'outdoor_portrait' | 'night'
+    profile: Profile
     showUnusable: boolean
     sortOption: SortOption
     filterOption: FilterOption
+    photoLayout: PhotoLayout
     
     // Params
-    config: {
-        max_long_edge: number
-        weights: { sharpness: number, exposure: number }
-        thresholds: { sharpness: number, low_light: number }
-    }
+    config: ScoreConfig
+    profileConfigs: Record<Profile, ScoreConfig>
     
     // Status
     computing: boolean
     progress: { done: number, total: number } | null
 
     rebuildCache: boolean
+    computeWorkers: number
     rightPanelVisible: boolean
 
 }

@@ -11,6 +11,7 @@ interface Window {
     cancelGroup: () => void
     writeXmp: (args: any) => void
     openExternal: (url: string) => Promise<boolean>
+    setWindowTheme: (theme: 'dark' | 'light') => void
     minimize: () => void
     maximize: () => void
     close: () => void

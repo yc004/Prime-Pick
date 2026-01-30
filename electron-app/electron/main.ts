@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, nativeImage, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, protocol, nativeImage, shell, nativeTheme } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { spawn } from 'child_process'
@@ -24,6 +24,8 @@ let prefWin: BrowserWindow | null = null
 let pythonProcess: ChildProcess | null = null
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
+
+const windowBgForTheme = (theme: 'dark' | 'light') => (theme === 'dark' ? '#020617' : '#ECFEFF')
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -139,10 +141,13 @@ function parseCsv(content: string): Array<Record<string, string>> {
 function createWindow() {
   const distDir = app.isPackaged ? path.join(app.getAppPath(), 'dist') : path.join(__dirname, '../dist')
   const publicDir = app.isPackaged ? distDir : path.join(__dirname, '../public')
+  const initialTheme: 'dark' | 'light' = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
 
   win = new BrowserWindow({
     width: 1400,
     height: 900,
+    minWidth: 1100,
+    minHeight: 720,
     icon: path.join(publicDir, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -152,7 +157,7 @@ function createWindow() {
     },
     titleBarStyle: 'hidden',
     autoHideMenuBar: true,
-    backgroundColor: '#020617',
+    backgroundColor: windowBgForTheme(initialTheme),
   })
 
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
@@ -423,6 +428,11 @@ function setupIpc() {
         else w.maximize()
     })
     ipcMain.on('window-close', (event) => BrowserWindow.fromWebContents(event.sender)?.close())
+    ipcMain.on('set-window-theme', (event, theme: unknown) => {
+        const t: 'dark' | 'light' = theme === 'light' ? 'light' : 'dark'
+        const w = BrowserWindow.fromWebContents(event.sender)
+        if (w && !w.isDestroyed()) w.setBackgroundColor(windowBgForTheme(t))
+    })
 
     ipcMain.handle('open-external', async (_event, url: unknown) => {
         const u = typeof url === 'string' ? url.trim() : ''
@@ -441,10 +451,13 @@ function setupIpc() {
 
         const distDir = app.isPackaged ? path.join(app.getAppPath(), 'dist') : path.join(__dirname, '../dist')
         const publicDir = app.isPackaged ? distDir : path.join(__dirname, '../public')
+        const initialTheme: 'dark' | 'light' = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
 
         prefWin = new BrowserWindow({
             width: 980,
             height: 900,
+            minWidth: 840,
+            minHeight: 700,
             parent: win,
             modal: false,
             show: true,
@@ -457,7 +470,7 @@ function setupIpc() {
             },
             titleBarStyle: 'hidden',
             autoHideMenuBar: true,
-            backgroundColor: '#020617',
+            backgroundColor: windowBgForTheme(initialTheme),
         })
 
         prefWin.on('closed', () => {
@@ -519,7 +532,7 @@ function setupIpc() {
     })
 
     ipcMain.on('start-compute', (event, args) => {
-        const { inputDir, profile, config, rebuildCache } = args
+        const { inputDir, profile, config, rebuildCache, workers } = args
         const configPath = path.join(app.getPath('userData'), 'temp_config.json')
         fs.writeFileSync(configPath, JSON.stringify(config))
 
@@ -530,6 +543,7 @@ function setupIpc() {
         ]
 
         if (rebuildCache) cliArgs.push('--rebuild-cache')
+        if (typeof workers === 'number') cliArgs.push('--workers', String(workers))
 
         const params = getSpawnParameters('compute', cliArgs)
         spawnPythonProcess(event, 'compute', params)

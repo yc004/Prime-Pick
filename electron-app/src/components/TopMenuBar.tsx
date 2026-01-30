@@ -3,19 +3,22 @@ import { Button, Dropdown, Modal, Segmented, Tag, Typography } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   ApartmentOutlined,
+  AppstoreOutlined,
+  BorderOutlined,
+  CloseOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
   InfoCircleOutlined,
   LayoutOutlined,
+  MinusOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
   SettingOutlined,
   StopOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons'
 import { shallow } from 'zustand/shallow'
 import { useStore } from '../store/useStore'
-
-const { Text } = Typography
 
 interface Props {
   isElectron: boolean
@@ -26,45 +29,53 @@ interface Props {
 const TopMenuBar: React.FC<Props> = ({ isElectron, onSelectDir, onReloadResults }) => {
   const {
     inputDir,
-    photos,
-    selectedPhotos,
     viewMode,
     setViewMode,
+    rightPanelVisible,
+    toggleRightPanelVisible,
+    photoLayout,
+    setPhotoLayout,
+    selectedPhotos,
+    photos,
+    selectAll,
+    clearSelection,
     computing,
-    progress,
     setComputing,
     setProgress,
     grouping,
-    groupProgress,
     setGrouping,
     setGroupProgress,
-    config,
     profile,
+    config,
     rebuildCache,
+    computeWorkers,
     groupingParams,
-    rightPanelVisible,
-    toggleRightPanelVisible,
+    setWritingXmp,
   } = useStore(
     (s) => ({
       inputDir: s.inputDir,
-      photos: s.photos,
-      selectedPhotos: s.selectedPhotos,
       viewMode: s.viewMode,
       setViewMode: s.setViewMode,
+      rightPanelVisible: s.rightPanelVisible,
+      toggleRightPanelVisible: s.toggleRightPanelVisible,
+      photoLayout: s.photoLayout,
+      setPhotoLayout: s.setPhotoLayout,
+      selectedPhotos: s.selectedPhotos,
+      photos: s.photos,
+      selectAll: s.selectAll,
+      clearSelection: s.clearSelection,
       computing: s.computing,
-      progress: s.progress,
       setComputing: s.setComputing,
       setProgress: s.setProgress,
       grouping: s.grouping,
-      groupProgress: s.groupProgress,
       setGrouping: s.setGrouping,
       setGroupProgress: s.setGroupProgress,
-      config: s.config,
       profile: s.profile,
+      config: s.config,
       rebuildCache: s.rebuildCache,
+      computeWorkers: s.computeWorkers,
       groupingParams: s.groupingParams,
-      rightPanelVisible: s.rightPanelVisible,
-      toggleRightPanelVisible: s.toggleRightPanelVisible,
+      setWritingXmp: s.setWritingXmp,
     }),
     shallow,
   )
@@ -74,14 +85,100 @@ const TopMenuBar: React.FC<Props> = ({ isElectron, onSelectDir, onReloadResults 
     return inputDir.split(/[/\\]/).pop() || inputDir
   }, [inputDir])
 
-  const selectionCount = selectedPhotos.size
-  const totalCount = photos.length
+  const handleAbout = () => {
+    const repoUrl = 'https://github.com/yc004/Prime-Pick'
+    const licenseUrl = `${repoUrl}/blob/main/LICENSE`
+    const open = (url: string) => {
+      if (window.electronAPI?.openExternal) {
+        window.electronAPI.openExternal(url)
+        return
+      }
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
 
-  const canRun = isElectron && !!inputDir && !!window.electronAPI
+    Modal.info({
+      title: <div className="text-text font-semibold">关于 Prime Pick</div>,
+      icon: null,
+      centered: true,
+      maskClosable: true,
+      okText: '关闭',
+      width: 560,
+      styles: {
+        container: {
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          borderRadius: 14,
+          boxShadow: '0 18px 60px rgba(0,0,0,0.35)',
+        },
+        header: {
+          background: 'var(--color-surface)',
+          borderBottom: '1px solid var(--color-border)',
+          borderRadius: '14px 14px 0 0',
+          paddingTop: 14,
+          paddingBottom: 12,
+        },
+        body: {
+          background: 'var(--color-surface)',
+          paddingTop: 12,
+        },
+        footer: {
+          background: 'var(--color-surface)',
+          borderTop: '1px solid var(--color-border)',
+          borderRadius: '0 0 14px 14px',
+        },
+      },
+      content: (
+        <div className="text-text">
+          <div className="text-sm leading-relaxed text-text">
+            批量评估照片技术质量（清晰度/曝光等），支持相似分组与 XMP sidecar 写入（Lightroom 工作流）。
+          </div>
+          <div className="mt-3 app-panel p-3">
+            <div className="grid grid-cols-[84px_1fr] gap-y-2 gap-x-3 text-sm">
+              <div className="text-muted">仓库</div>
+              <div className="truncate">
+                <Typography.Link onClick={() => open(repoUrl)} className="!text-text">
+                  {repoUrl}
+                </Typography.Link>
+              </div>
+              <div className="text-muted">协议</div>
+              <div className="truncate">
+                <Typography.Link onClick={() => open(licenseUrl)} className="!text-text">
+                  GNU GPLv3
+                </Typography.Link>
+              </div>
+              <div className="text-muted">技术栈</div>
+              <div className="text-text">Electron + React（桌面端）· Python（计算/写入）</div>
+            </div>
+          </div>
+        </div>
+      ),
+    })
+  }
+
+  const helpMenu: MenuProps['items'] = [
+    {
+      key: 'help.shortcuts',
+      label: '快捷键',
+      children: [
+        { key: 'help.shortcuts.open', label: '打开文件夹：Ctrl+O', disabled: true },
+        { key: 'help.shortcuts.reload', label: '重载结果：Ctrl+R', disabled: true },
+        { key: 'help.shortcuts.viewAll', label: '全部照片：Ctrl+1', disabled: true },
+        { key: 'help.shortcuts.viewGrouped', label: '相似分组：Ctrl+2', disabled: true },
+        { key: 'help.shortcuts.togglePreview', label: '切换右侧预览：Ctrl+I', disabled: true },
+        { key: 'help.shortcuts.preferences', label: '偏好设置：Ctrl+,', disabled: true },
+        { key: 'help.shortcuts.selection', label: '选择：Ctrl 多选 · Shift 连选', disabled: true },
+      ],
+    },
+    { key: 'help.about', label: '关于 Prime Pick', icon: <InfoCircleOutlined /> },
+  ]
+
+  const canRun = Boolean(isElectron && inputDir && window.electronAPI)
+  const canWriteSelected = Boolean(canRun && selectedPhotos.size > 0)
+  const canWriteAll = Boolean(canRun && photos.length > 0)
 
   const handleStartCompute = () => {
     if (!canRun) return
-    window.electronAPI.startCompute({ inputDir, profile, config, rebuildCache })
+    window.electronAPI.startCompute({ inputDir, profile, config, rebuildCache, workers: computeWorkers })
     setComputing(true)
   }
 
@@ -114,154 +211,189 @@ const TopMenuBar: React.FC<Props> = ({ isElectron, onSelectDir, onReloadResults 
       config,
       onlySelected,
     })
-  }
-
-  const handleAbout = () => {
-    const repoUrl = 'https://github.com/yc004/Prime-Pick'
-    const licenseUrl = `${repoUrl}/blob/main/LICENSE`
-    const open = (url: string) => {
-      if (window.electronAPI?.openExternal) {
-        window.electronAPI.openExternal(url)
-        return
-      }
-      window.open(url, '_blank', 'noopener,noreferrer')
-    }
-
-    Modal.info({
-      title: '关于 Prime Pick',
-      content: (
-        <div className="text-slate-200">
-          <div>批量评估照片技术质量（清晰度/曝光等），支持相似分组与 XMP sidecar 写入（Lightroom 工作流）。</div>
-          <div className="mt-3 grid grid-cols-[84px_1fr] gap-y-2 gap-x-3 text-sm">
-            <div className="text-slate-400">仓库</div>
-            <div className="truncate">
-              <Typography.Link onClick={() => open(repoUrl)} className="!text-slate-200">
-                {repoUrl}
-              </Typography.Link>
-            </div>
-            <div className="text-slate-400">协议</div>
-            <div className="truncate">
-              <Typography.Link onClick={() => open(licenseUrl)} className="!text-slate-200">
-                GNU GPLv3
-              </Typography.Link>
-            </div>
-            <div className="text-slate-400">技术栈</div>
-            <div className="text-slate-200">Electron + React（桌面端）· Python（计算/写入）</div>
-          </div>
-          <div className="mt-2 text-xs text-slate-400">
-            快捷键：Ctrl+O 打开 · Ctrl+R 重载 · Ctrl+1/2 切换视图 · Ctrl+I 切换预览 · Ctrl+, 偏好设置
-          </div>
-        </div>
-      ),
-    })
+    setWritingXmp(true)
   }
 
   const fileMenu: MenuProps['items'] = [
-    { key: 'open', label: '打开文件夹 (Ctrl+O)', icon: <FolderOpenOutlined /> },
-    { key: 'reload', label: '重新加载结果 (Ctrl+R)', icon: <ReloadOutlined />, disabled: !inputDir },
+    { key: 'file.open', label: '打开文件夹… (Ctrl+O)', icon: <FolderOpenOutlined /> },
+    { key: 'file.reload', label: '重新加载结果 (Ctrl+R)', icon: <ReloadOutlined />, disabled: !inputDir },
     { type: 'divider' },
-    { key: 'close', label: '退出', danger: true },
+    {
+      key: 'file.export',
+      label: '导出',
+      children: [
+        { key: 'file.export.xmpSelected', label: '写入 XMP（选中）', icon: <FileTextOutlined />, disabled: !canWriteSelected },
+        { key: 'file.export.xmpAll', label: '写入 XMP（全部）', icon: <FileTextOutlined />, disabled: !canWriteAll },
+      ],
+    },
+    { type: 'divider' },
+    { key: 'file.quit', label: '退出', danger: true, disabled: !isElectron },
+  ]
+
+  const editMenu: MenuProps['items'] = [
+    { key: 'edit.selectAll', label: '全选', disabled: !isElectron || photos.length === 0 },
+    { key: 'edit.clearSelection', label: '取消选择', disabled: !isElectron || selectedPhotos.size === 0 },
   ]
 
   const viewMenu: MenuProps['items'] = [
-    { key: 'all', label: '全部照片 (Ctrl+1)' },
-    { key: 'grouped', label: '相似分组 (Ctrl+2)' },
-    { type: 'divider' },
-    { key: 'toggleRightPanel', label: `${rightPanelVisible ? '隐藏' : '显示'}右侧面板 (Ctrl+I)`, icon: <LayoutOutlined /> },
-    { key: 'preferences', label: '偏好设置 (Ctrl+,)', icon: <SettingOutlined /> },
-  ]
-
-  const actionMenu: MenuProps['items'] = [
     {
-      key: 'compute',
-      label: computing ? '停止计算' : '应用并重算全部',
-      icon: computing ? <StopOutlined /> : <PlayCircleOutlined />,
-      disabled: !canRun,
+      key: 'view.mode',
+      label: '模式',
+      children: [
+        { key: 'view.mode.all', label: '全部照片 (Ctrl+1)' },
+        { key: 'view.mode.grouped', label: '相似分组 (Ctrl+2)' },
+      ],
     },
     {
-      key: 'group',
-      label: grouping ? '停止相似分组' : '运行相似分组',
-      icon: grouping ? <StopOutlined /> : <ApartmentOutlined />,
-      disabled: !canRun,
+      key: 'view.layout',
+      label: '布局',
+      children: [
+        { key: 'view.layout.list', label: '列表', icon: <UnorderedListOutlined /> },
+        { key: 'view.layout.grid', label: '宫格', icon: <AppstoreOutlined /> },
+      ],
     },
     { type: 'divider' },
-    { key: 'xmpSelected', label: '写入 XMP（选中）', icon: <FileTextOutlined />, disabled: !canRun || selectionCount === 0 },
-    { key: 'xmpAll', label: '写入 XMP（全部）', icon: <FileTextOutlined />, disabled: !canRun },
+    {
+      key: 'view.panels',
+      label: '面板',
+      children: [
+        {
+          key: 'view.panels.right',
+          label: `${rightPanelVisible ? '隐藏' : '显示'}右侧面板 (Ctrl+I)`,
+          icon: <LayoutOutlined />,
+        },
+      ],
+    },
   ]
 
-  const helpMenu: MenuProps['items'] = [{ key: 'about', label: '关于', icon: <InfoCircleOutlined /> }]
+  const toolsMenu: MenuProps['items'] = [
+    {
+      key: 'tools.compute',
+      label: '计算',
+      children: [
+        {
+          key: 'tools.compute.toggle',
+          label: computing ? '停止计算' : '开始计算',
+          icon: computing ? <StopOutlined /> : <PlayCircleOutlined />,
+          disabled: !canRun,
+        },
+      ],
+    },
+    {
+      key: 'tools.group',
+      label: '相似分组',
+      children: [
+        {
+          key: 'tools.group.toggle',
+          label: grouping ? '停止分组' : '开始分组',
+          icon: grouping ? <StopOutlined /> : <ApartmentOutlined />,
+          disabled: !canRun,
+        },
+      ],
+    },
+    { type: 'divider' },
+    { key: 'tools.preferences', label: '偏好设置 (Ctrl+,)', icon: <SettingOutlined /> },
+  ]
 
-  const onFileClick: MenuProps['onClick'] = ({ key }) => {
-    if (key === 'open') onSelectDir()
-    if (key === 'reload') onReloadResults()
-    if (key === 'close') window.electronAPI?.close?.()
+  const onMenuClick: MenuProps['onClick'] = ({ key }) => {
+    const k = String(key)
+
+    if (k === 'file.open') onSelectDir()
+    if (k === 'file.reload') onReloadResults()
+    if (k === 'file.export.xmpSelected') handleWriteXmp(true)
+    if (k === 'file.export.xmpAll') handleWriteXmp(false)
+    if (k === 'file.quit') window.electronAPI?.close?.()
+
+    if (k === 'edit.selectAll') selectAll()
+    if (k === 'edit.clearSelection') clearSelection()
+
+    if (k === 'view.mode.all') setViewMode('all')
+    if (k === 'view.mode.grouped') setViewMode('grouped')
+    if (k === 'view.layout.list') setPhotoLayout('list')
+    if (k === 'view.layout.grid') setPhotoLayout('grid')
+    if (k === 'view.panels.right') toggleRightPanelVisible()
+
+    if (k === 'tools.compute.toggle') (computing ? handleCancelCompute() : handleStartCompute())
+    if (k === 'tools.group.toggle') (grouping ? handleCancelGroup() : handleStartGroup())
+    if (k === 'tools.preferences') window.electronAPI?.openPreferencesWindow?.()
+
+    if (k === 'help.about') handleAbout()
   }
 
-  const onViewClick: MenuProps['onClick'] = ({ key }) => {
-    if (key === 'all' || key === 'grouped') setViewMode(key as any)
-    if (key === 'toggleRightPanel') toggleRightPanelVisible()
-    if (key === 'preferences') window.electronAPI?.openPreferencesWindow?.()
+  const handleMinimize = () => {
+    try {
+      window.electronAPI?.minimize?.()
+    } catch {}
   }
 
-  const onActionClick: MenuProps['onClick'] = ({ key }) => {
-    if (key === 'compute') (computing ? handleCancelCompute() : handleStartCompute())
-    if (key === 'group') (grouping ? handleCancelGroup() : handleStartGroup())
-    if (key === 'xmpSelected') handleWriteXmp(true)
-    if (key === 'xmpAll') handleWriteXmp(false)
+  const handleMaximize = () => {
+    try {
+      window.electronAPI?.maximize?.()
+    } catch {}
   }
 
-  const onHelpClick: MenuProps['onClick'] = ({ key }) => {
-    if (key === 'about') handleAbout()
+  const handleClose = () => {
+    try {
+      window.electronAPI?.close?.()
+    } catch {}
   }
 
   return (
     <div
-      className="h-11 shrink-0 flex items-center justify-between px-3 bg-slate-900/70 backdrop-blur-md border-b border-slate-800"
-      style={{ WebkitAppRegion: 'no-drag' } as any}
+      className="h-11 shrink-0 flex items-center gap-2 px-3 bg-surface/90 backdrop-blur-md border-b border-border select-none"
+      style={{ WebkitAppRegion: 'drag' } as any}
     >
-      <div className="flex items-center gap-2">
-        <Dropdown menu={{ items: fileMenu, onClick: onFileClick }} trigger={['click']}>
-          <Button size="small" type="text" className="!text-slate-200 hover:!bg-slate-800/60">
+      <div className="flex items-center gap-2 min-w-0">
+        <img src="PrimePick_pure.svg" className="w-5 h-5 object-contain" draggable={false} />
+        <span className="text-sm font-medium text-text/80">Prime Pick</span>
+      </div>
+
+      <div className="flex items-center gap-2 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as any}>
+        <Dropdown menu={{ items: fileMenu, onClick: onMenuClick }} trigger={['click']}>
+          <Button size="small" type="text" className="!text-text hover:!bg-secondary/60">
             文件
           </Button>
         </Dropdown>
-        <Dropdown menu={{ items: viewMenu, onClick: onViewClick }} trigger={['click']}>
-          <Button size="small" type="text" className="!text-slate-200 hover:!bg-slate-800/60">
+        <Dropdown menu={{ items: editMenu, onClick: onMenuClick }} trigger={['click']}>
+          <Button size="small" type="text" className="!text-text hover:!bg-secondary/60">
+            编辑
+          </Button>
+        </Dropdown>
+        <Dropdown
+          menu={{
+            items: viewMenu,
+            onClick: onMenuClick,
+            selectable: true,
+            multiple: true,
+            selectedKeys: [`view.mode.${viewMode}`, `view.layout.${photoLayout}`],
+          }}
+          trigger={['click']}
+        >
+          <Button size="small" type="text" className="!text-text hover:!bg-secondary/60">
             视图
           </Button>
         </Dropdown>
-        <Dropdown menu={{ items: actionMenu, onClick: onActionClick }} trigger={['click']}>
-          <Button size="small" type="text" className="!text-slate-200 hover:!bg-slate-800/60">
-            操作
+        <Dropdown menu={{ items: toolsMenu, onClick: onMenuClick }} trigger={['click']}>
+          <Button size="small" type="text" className="!text-text hover:!bg-secondary/60">
+            工具
           </Button>
         </Dropdown>
-        <Dropdown menu={{ items: helpMenu, onClick: onHelpClick }} trigger={['click']}>
-          <Button size="small" type="text" className="!text-slate-200 hover:!bg-slate-800/60">
+        <Dropdown menu={{ items: helpMenu, onClick: onMenuClick }} trigger={['click']}>
+          <Button size="small" type="text" className="!text-text hover:!bg-secondary/60">
             帮助
           </Button>
         </Dropdown>
-      </div>
 
-      <div className="flex items-center gap-2 min-w-0">
-        <Tag color="blue" className="m-0 max-w-[280px] truncate" title={inputDir ?? undefined}>
+        <div className="h-4 w-[1px] bg-border mx-1" />
+
+        <Tag color="blue" className="m-0 max-w-[220px] truncate" title={inputDir ?? undefined}>
           {folderLabel}
         </Tag>
-        <Text className="text-xs text-slate-300 whitespace-nowrap">
-          已加载 {totalCount} · 选中 {selectionCount}
-        </Text>
-        {progress && computing && (
-          <Text className="text-xs text-slate-400 whitespace-nowrap">
-            计算 {Math.round((progress.done / Math.max(1, progress.total)) * 100)}%
-          </Text>
-        )}
-        {groupProgress && grouping && (
-          <Text className="text-xs text-slate-400 whitespace-nowrap">
-            分组 {groupProgress.stage} {groupProgress.done}/{groupProgress.total}
-          </Text>
-        )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex-1 min-w-0" />
+
+      <div className="flex items-center gap-2 justify-end" style={{ WebkitAppRegion: 'no-drag' } as any}>
         <Button
           size="small"
           icon={<FolderOpenOutlined />}
@@ -292,6 +424,30 @@ const TopMenuBar: React.FC<Props> = ({ isElectron, onSelectDir, onReloadResults 
           title="切换右侧面板 (Ctrl+I)"
         />
         <Button size="small" icon={<SettingOutlined />} onClick={() => window.electronAPI?.openPreferencesWindow?.()} title="偏好设置 (Ctrl+,)" />
+
+        <div className="h-5 w-[1px] bg-border mx-1" />
+
+        <button
+          onClick={handleMinimize}
+          className="h-10 w-10 flex items-center justify-center hover:bg-secondary/60 transition-colors text-muted hover:text-text outline-none cursor-pointer rounded-md"
+          disabled={!isElectron}
+        >
+          <MinusOutlined className="text-xs" />
+        </button>
+        <button
+          onClick={handleMaximize}
+          className="h-10 w-10 flex items-center justify-center hover:bg-secondary/60 transition-colors text-muted hover:text-text outline-none cursor-pointer rounded-md"
+          disabled={!isElectron}
+        >
+          <BorderOutlined className="text-xs" />
+        </button>
+        <button
+          onClick={handleClose}
+          className="h-10 w-10 flex items-center justify-center hover:bg-red-500/80 hover:text-white transition-colors text-muted outline-none cursor-pointer rounded-md"
+          disabled={!isElectron}
+        >
+          <CloseOutlined className="text-xs" />
+        </button>
       </div>
     </div>
   )

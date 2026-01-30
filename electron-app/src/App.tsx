@@ -6,6 +6,7 @@ import GroupedView from './components/GroupedView'
 import ErrorBoundary from './components/ErrorBoundary'
 import TitleBar from './components/TitleBar'
 import TopMenuBar from './components/TopMenuBar'
+import BottomStatusBar from './components/BottomStatusBar'
 import PreferencesPage from './components/PreferencesPage'
 import { useStore } from './store/useStore'
 import { shallow } from 'zustand/shallow'
@@ -14,9 +15,11 @@ const App: React.FC = () => {
   const { 
     setInputDir, setPhotos, setGroups, setComputing, setProgress,
     setGrouping, setGroupProgress,
+    setWritingXmp, setXmpProgress,
     inputDir,
     viewMode,
     rightPanelVisible,
+    photos,
   } = useStore(
     (s) => ({
       setInputDir: s.setInputDir,
@@ -26,9 +29,12 @@ const App: React.FC = () => {
       setProgress: s.setProgress,
       setGrouping: s.setGrouping,
       setGroupProgress: s.setGroupProgress,
+      setWritingXmp: s.setWritingXmp,
+      setXmpProgress: s.setXmpProgress,
       inputDir: s.inputDir,
       viewMode: s.viewMode,
       rightPanelVisible: s.rightPanelVisible,
+      photos: s.photos,
     }),
     shallow,
   )
@@ -36,7 +42,7 @@ const App: React.FC = () => {
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI
   const isPreferencesWindow = typeof window !== 'undefined' && window.location.hash === '#/preferences'
 
-  const normalizeResults = (results: any): any[] => {
+  const normalizeResults = useCallback((results: any): any[] => {
     if (!Array.isArray(results)) return []
     return results.map((r) => {
       const reasons = Array.isArray(r?.reasons)
@@ -68,7 +74,27 @@ const App: React.FC = () => {
         is_group_best: typeof r?.is_group_best === 'boolean' ? r.is_group_best : String(r?.is_group_best).toLowerCase() === 'true',
       }
     })
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!isElectron) return
+    if (isPreferencesWindow) return
+    if (!inputDir) return
+    if (photos.length > 0) return
+    if (!window.electronAPI) return
+
+    window.electronAPI.readResults(inputDir).then((results) => {
+      const normalized = normalizeResults(results)
+      if (normalized.length > 0) {
+        setPhotos(normalized)
+        window.electronAPI?.readGroups?.(inputDir).then((g) => setGroups(g))
+        message.success(`已恢复上次会话：${inputDir.split(/[/\\]/).pop() || inputDir}`)
+      } else {
+        setGroups(null)
+        message.info('已恢复上次文件夹，但未找到结果文件，请重新加载或开始计算。')
+      }
+    })
+  }, [inputDir, isElectron, isPreferencesWindow, normalizeResults, photos.length, setGroups, setPhotos])
 
   const handleSelectDir = useCallback(async () => {
     if (!window.electronAPI) {
@@ -178,11 +204,16 @@ const App: React.FC = () => {
         }
     })
 
-    const offXmpProgress = window.electronAPI.onWriteXmpProgress(() => {
-        // Handle xmp progress if we want separate UI
+    const offXmpProgress = window.electronAPI.onWriteXmpProgress((data) => {
+        if (data?.type === 'write-xmp') {
+            setWritingXmp(true)
+            setXmpProgress({ done: data.done, total: data.total })
+        }
     })
     
     const offXmpDone = window.electronAPI.onWriteXmpDone((code) => {
+        setWritingXmp(false)
+        setXmpProgress(null)
         if (code === 0) message.success('XMP 写入完成')
         else message.error('XMP 写入失败')
     })
@@ -205,7 +236,7 @@ const App: React.FC = () => {
         offXmpDone()
         offError()
     }
-  }, [inputDir, setPhotos, setGroups, setComputing, setProgress, setGrouping, setGroupProgress])
+  }, [inputDir, setPhotos, setGroups, setComputing, setProgress, setGrouping, setGroupProgress, setWritingXmp, setXmpProgress])
 
   useEffect(() => {
     const isEditable = (target: EventTarget | null) => {
@@ -297,9 +328,10 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
-      <div className="h-screen flex flex-col bg-background overflow-hidden" style={{ backgroundColor: '#020617', color: '#fff' }}>
-        <TitleBar title={isPreferencesWindow ? '偏好设置' : isElectron ? 'Prime Pick' : 'Prime Pick (Web Mode)'} />
-        {!isPreferencesWindow && (
+      <div className="h-screen flex flex-col bg-background overflow-hidden">
+        {isPreferencesWindow ? (
+          <TitleBar title="偏好设置" />
+        ) : (
           <TopMenuBar isElectron={isElectron} onSelectDir={handleSelectDir} onReloadResults={handleReloadResults} />
         )}
         <div className="flex-1 overflow-hidden p-3">
@@ -331,6 +363,7 @@ const App: React.FC = () => {
           </div>
           )}
         </div>
+        {!isPreferencesWindow && <BottomStatusBar />}
       </div>
     </ErrorBoundary>
   )

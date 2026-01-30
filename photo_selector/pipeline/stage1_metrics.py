@@ -203,6 +203,7 @@ def run_stage1(
                 path, sig = futures[future]
                 try:
                     res = future.result()
+                    res = rescore_cached_result(res)
                     results.append(res)
                     
                     # 写入缓存
