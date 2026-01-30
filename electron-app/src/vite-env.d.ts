@@ -9,6 +9,7 @@ interface Window {
     cancelCompute: () => void
     startGroup: (args: any) => void
     cancelGroup: () => void
+    checkModels: (args?: { force?: boolean }) => void
     writeXmp: (args: any) => void
     openExternal: (url: string) => Promise<boolean>
     setWindowTheme: (theme: 'dark' | 'light') => void
@@ -22,6 +23,8 @@ interface Window {
     onGroupDone: (callback: (code: number) => void) => () => void
     onWriteXmpProgress: (callback: (data: any) => void) => () => void
     onWriteXmpDone: (callback: (code: number) => void) => () => void
+    onCheckModelsProgress: (callback: (data: any) => void) => () => void
+    onCheckModelsDone: (callback: (code: number) => void) => () => void
     onError: (callback: (error: { title: string; content: string }) => void) => () => void
     logInfo: (message: string) => void
     logError: (message: string) => void

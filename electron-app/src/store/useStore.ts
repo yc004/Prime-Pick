@@ -78,6 +78,7 @@ export interface SortOption {
 export interface FilterOption {
     minScore: number
     blurryMode: 'all' | 'only' | 'exclude'
+    minEmotionScore?: number
 }
 
 interface Store extends AppState {
@@ -106,6 +107,8 @@ interface Store extends AppState {
     setComputeWorkers: (workers: number) => void
     setSortOption: (option: SortOption) => void
     setFilterOption: (option: Partial<FilterOption>) => void
+    toggleFilterEmotion: (emotion: string) => void
+    clearFilterEmotions: () => void
     setPhotoLayout: (layout: AppState['photoLayout']) => void
     setWritingXmp: (writing: boolean) => void
     setXmpProgress: (progress: { done: number, total: number } | null) => void
@@ -182,7 +185,8 @@ export const useStore = createWithEqualityFn<Store>((set) => ({
     profile: (persisted as any).profile ?? 'daylight',
     showUnusable: typeof (persisted as any).showUnusable === 'boolean' ? (persisted as any).showUnusable : true,
     sortOption: (persisted as any).sortOption ?? { field: 'filename', order: 'asc' },
-    filterOption: (persisted as any).filterOption ?? { minScore: 0, blurryMode: 'all' },
+    filterOption: (persisted as any).filterOption ?? { minScore: 0, blurryMode: 'all', minEmotionScore: 0 },
+    filterEmotions: new Set<string>(),
     photoLayout: (persisted as any).photoLayout === 'grid' ? 'grid' : 'list',
     profileConfigs: {
         daylight: configForProfile('daylight'),
@@ -267,6 +271,16 @@ export const useStore = createWithEqualityFn<Store>((set) => ({
     setComputeWorkers: (w) => set({ computeWorkers: w }),
     setSortOption: (option) => set({ sortOption: option }),
     setFilterOption: (option) => set((state) => ({ filterOption: { ...state.filterOption, ...option } })),
+    toggleFilterEmotion: (emotion) => set((state) => {
+        const newSet = new Set(state.filterEmotions)
+        if (newSet.has(emotion)) {
+            newSet.delete(emotion)
+        } else {
+            newSet.add(emotion)
+        }
+        return { filterEmotions: newSet }
+    }),
+    clearFilterEmotions: () => set({ filterEmotions: new Set() }),
     setPhotoLayout: (layout) => set({ photoLayout: layout }),
 }))
 

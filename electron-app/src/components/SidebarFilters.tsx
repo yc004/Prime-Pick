@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react'
-import { Alert, Button, Select, Divider, Switch, Typography, Slider, Radio, InputNumber } from 'antd'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Alert, Button, Select, Divider, Switch, Typography, Slider, Radio, InputNumber, Checkbox } from 'antd'
 import { FolderOpenOutlined, SortAscendingOutlined, SortDescendingOutlined } from '@ant-design/icons'
 import { useStore } from '../store/useStore'
 import { shallow } from 'zustand/shallow'
@@ -12,6 +12,9 @@ interface Props {
 }
 
 const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
+    const [modelsChecking, setModelsChecking] = useState(false)
+    const [modelsStatus, setModelsStatus] = useState<string>('')
+
     const { 
         inputDir, profile, setProfile, 
         showUnusable, toggleShowUnusable,
@@ -24,6 +27,7 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
         grouping, setGrouping,
         groupProgress, setGroupProgress,
         showOnlyGroupBest, toggleShowOnlyGroupBest,
+        filterEmotions, toggleFilterEmotion,
     } = useStore(
         (s) => ({
             inputDir: s.inputDir,
@@ -36,6 +40,8 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
             setSortOption: s.setSortOption,
             filterOption: s.filterOption,
             setFilterOption: s.setFilterOption,
+            filterEmotions: s.filterEmotions,
+            toggleFilterEmotion: s.toggleFilterEmotion,
             config: s.config,
             updateConfig: s.updateConfig,
             viewMode: s.viewMode,
@@ -51,6 +57,30 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
         }),
         shallow,
     )
+
+    const emotionOptions = ['happiness', 'neutral', 'surprise', 'sadness', 'anger', 'disgust', 'fear', 'contempt']
+
+    const hasEmotionData = useMemo(() => {
+        return (photos as any[]).some((p) => typeof p?.emotion === 'string' && p.emotion) ||
+            (photos as any[]).some((p) => typeof p?.emotion_score === 'number')
+    }, [photos])
+
+    useEffect(() => {
+        if (!isElectron || !window.electronAPI) return
+        const offProgress = window.electronAPI.onCheckModelsProgress?.((evt: any) => {
+            if (evt && evt.type === 'log' && typeof evt.line === 'string') {
+                setModelsStatus(evt.line.trim())
+            }
+        })
+        const offDone = window.electronAPI.onCheckModelsDone?.((code: number) => {
+            setModelsChecking(false)
+            setModelsStatus(code === 0 ? '模型检查完成' : `模型检查失败 (code=${code})`)
+        })
+        return () => {
+            if (typeof offProgress === 'function') offProgress()
+            if (typeof offDone === 'function') offDone()
+        }
+    }, [isElectron])
 
     const sortOptions = [
         { label: '文件名', value: 'filename' },
@@ -228,6 +258,69 @@ const SidebarFilters: React.FC<Props> = ({ onSelectDir, isElectron }) => {
                                 thresholds: { ...config.thresholds, sharpness: v },
                             })
                         }
+                    />
+                </div>
+            </div>
+
+            <Divider className="bg-secondary my-2" />
+
+            <div className="app-panel p-3 flex flex-col gap-2">
+                <Title level={5} className="app-section-title m-0">人物表情 (实验性)</Title>
+                {!hasEmotionData && photos.length > 0 && (
+                    <Alert
+                        type="info"
+                        showIcon
+                        message="未检测到表情数据"
+                        description={
+                            <div className="text-xs leading-relaxed">
+                                <div>可能原因：未重新运行计算、旧结果文件、照片无人脸、或表情模型未下载。</div>
+                                {isElectron ? (
+                                    <div className="mt-2 flex gap-2 flex-wrap items-center">
+                                        <Button
+                                            size="small"
+                                            onClick={() => {
+                                                if (!window.electronAPI) return
+                                                setModelsChecking(true)
+                                                setModelsStatus('开始检查/下载模型…')
+                                                window.electronAPI.checkModels?.({ force: false })
+                                            }}
+                                            loading={modelsChecking}
+                                        >
+                                            检查/下载模型
+                                        </Button>
+                                        <span className="text-muted">{modelsStatus}</span>
+                                    </div>
+                                ) : (
+                                    <div className="mt-2">浏览器预览模式无法运行模型下载/计算，请在 Electron 中打开。</div>
+                                )}
+                                <div className="mt-2">提示：要生成表情分，需要重新运行一次计算（建议开启重建缓存）。</div>
+                            </div>
+                        }
+                    />
+                )}
+                <div className="flex flex-wrap gap-y-1">
+                    {emotionOptions.map(em => (
+                        <Checkbox 
+                            key={em} 
+                            checked={filterEmotions.has(em)}
+                            onChange={() => toggleFilterEmotion(em)}
+                            className="text-xs !ml-0 w-[50%]"
+                        >
+                            {em}
+                        </Checkbox>
+                    ))}
+                </div>
+                <div className="mt-2">
+                    <div className="flex justify-between items-center mb-1">
+                        <Text className="!text-text text-xs">最低表情分</Text>
+                        <Text className="text-xs text-secondary">{filterOption?.minEmotionScore ?? 0}</Text>
+                    </div>
+                    <Slider
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={filterOption?.minEmotionScore ?? 0}
+                        onChange={(v) => setFilterOption({ minEmotionScore: v })}
                     />
                 </div>
             </div>

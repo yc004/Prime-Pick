@@ -15,6 +15,7 @@ from photo_selector.pipeline.stage2_xmp import run_stage2, load_results_from_csv
 from photo_selector.pipeline.models import MetricsResult
 from photo_selector.io.results_writer import write_results
 from photo_selector.similarity.grouping import run_grouping
+from photo_selector.download_utils import download_models
 
 # Configure logging to stderr so stdout is clean for JSON
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
@@ -200,6 +201,10 @@ def cmd_group(args):
         }
     )
 
+def cmd_check_models(args):
+    download_models(force=bool(getattr(args, "force", False)))
+    print_json({"type": "complete", "msg": "models-checked"})
+
 def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command")
@@ -237,6 +242,10 @@ def main():
     p_group.add_argument("--workers", type=int, default=4)
     p_group.add_argument("--batch-size", type=int, default=32)
     
+    # Check Models
+    p_check = subparsers.add_parser("check-models")
+    p_check.add_argument("--force", action="store_true")
+
     args = parser.parse_args()
     
     if args.command == "compute":
@@ -245,6 +254,8 @@ def main():
         cmd_write_xmp(args)
     elif args.command == "group":
         cmd_group(args)
+    elif args.command == "check-models":
+        cmd_check_models(args)
     else:
         parser.print_help()
 

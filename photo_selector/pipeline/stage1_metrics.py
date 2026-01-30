@@ -4,18 +4,38 @@ import glob
 import logging
 import time
 import concurrent.futures
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
 from photo_selector.config import default_config
 from photo_selector.pipeline.models import MetricsResult, SharpnessResult, ExposureResult
 from photo_selector.io.image_reader import read_and_resize
 from photo_selector.metrics.sharpness import compute_sharpness
 from photo_selector.metrics.exposure import compute_exposure, score_exposure_from_stats
+from photo_selector.metrics.emotions import EmotionDetector
 from photo_selector.io.cache_sqlite import CacheSQLite
 from photo_selector.io.results_writer import write_results
 from photo_selector.io.photo_time import get_capture_timestamp
 
 logger = logging.getLogger(__name__)
+
+def _emotion_model_path() -> str:
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "emotion-ferplus-8.onnx")
+
+def _apply_emotion_adjustment(base_score: float, emotion_score: float) -> float:
+    adjusted = float(base_score + (float(emotion_score) - 50.0) * 0.2)
+    return float(max(0.0, min(100.0, adjusted)))
+
+def _compute_emotion_from_image(img) -> Tuple[Optional[str], Optional[float]]:
+    try:
+        model_path = _emotion_model_path()
+        detector = EmotionDetector.get_instance(model_path)
+        res = detector.detect_with_score(img)
+        if not res:
+            return None, None
+        emotion, score, _conf = res
+        return (str(emotion), float(score)) if emotion else (None, None)
+    except Exception:
+        return None, None
 
 def score_result(sharpness_res: SharpnessResult, exposure_res: ExposureResult):
     sharpness_norm = min((sharpness_res.score / default_config.SHARPNESS_THRESHOLD), 2.0)
@@ -67,6 +87,18 @@ def rescore_cached_result(res: MetricsResult) -> MetricsResult:
 
     if res.sharpness and res.exposure:
         final_score, is_unusable, reasons = score_result(res.sharpness, res.exposure)
+        if res.emotion_score is None:
+            try:
+                img = read_and_resize(res.filename, min(768, default_config.DEFAULT_LONG_EDGE))
+                if img is not None:
+                    emotion, emotion_score = _compute_emotion_from_image(img)
+                    if emotion:
+                        res.emotion = emotion
+                    res.emotion_score = emotion_score
+            except Exception:
+                pass
+        if res.emotion_score is not None:
+            final_score = _apply_emotion_adjustment(final_score, float(res.emotion_score))
         res.technical_score = final_score
         res.is_unusable = is_unusable
         res.reasons = reasons
@@ -100,6 +132,9 @@ def process_image(file_path: str) -> MetricsResult:
         exposure_res = compute_exposure(img)
 
         final_score, is_unusable, reasons = score_result(sharpness_res, exposure_res)
+        emotion, emotion_score = _compute_emotion_from_image(img)
+        if emotion_score is not None:
+            final_score = _apply_emotion_adjustment(final_score, float(emotion_score))
 
         return MetricsResult(
             filename=file_path,
@@ -108,7 +143,9 @@ def process_image(file_path: str) -> MetricsResult:
             capture_ts=capture_ts,
             technical_score=final_score,
             is_unusable=is_unusable,
-            reasons=reasons
+            reasons=reasons,
+            emotion=emotion,
+            emotion_score=emotion_score
         )
         
     except Exception as e:
